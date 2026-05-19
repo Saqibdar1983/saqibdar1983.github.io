@@ -2,22 +2,18 @@
 <html lang="en">
 <head>
 <script>
-/* ── FORCE-FRESH: Kill old service workers on every load ── */
-(async function killOldSW() {
+/* ── NUCLEAR SW CLEANUP: Unregister ALL service workers on every load ── */
+(async function killAllSW() {
   try {
-    if (!('serviceWorker' in navigator) || !('caches' in window)) return;
-    const CURRENT = 'dtm-v9';
-    const cacheNames = await caches.keys();
-    /* Only reload if there are caches and at least one is outdated */
-    const hasOld = cacheNames.length > 0 && cacheNames.some(n => n !== CURRENT);
-    if (hasOld) {
-      console.log('[DTM] Old cache detected — clearing and reloading...');
+    if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
       for (const r of regs) await r.unregister();
-      for (const n of cacheNames) await caches.delete(n);
-      window.location.reload(true);
     }
-  } catch(e) { console.warn('[DTM] SW cleanup error:', e); }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      for (const k of keys) await caches.delete(k);
+    }
+  } catch(e) {}
 })();
 </script>
 
@@ -3526,4 +3522,13 @@ function anPrint(empNum) {
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),600); }
 }
 
-/* ════════════════════════════════�
+/* ── Start ── */
+document.addEventListener("DOMContentLoaded", boot);
+
+/* ── Nuclear fallback: if spinner still showing after 8s, force login screen ── */
+document.addEventListener("DOMContentLoaded", function() {
+  setTimeout(function() {
+    const app = document.getElementById("app");
+    if (app && app.querySelector(".loading-state")) {
+      console.warn("[DTM] Spinner still showing after 8s — forcing login screen");
+      try
