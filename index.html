@@ -1208,82 +1208,73 @@ function boot() {
     S.tasks   = [];
   }
 
-  /* Check Firebase Auth state before rendering */
-  if (FB_OK && auth) {
-    let authResolved = false;
-
-    /* Safety net — if Firebase Auth never responds within 10s, use localStorage or show login */
-    const authTimeout = setTimeout(function() {
-      if (authResolved) return;
-      authResolved = true;
-      console.warn("[DTM] Firebase Auth timeout — falling back to localStorage");
-      const local = localStorage.getItem("dtm_user_v1");
-      if (local) { try { S.user = JSON.parse(local); renderApp(); return; } catch(e){} }
-      renderLoginScreen();
-    }, 10000);
-
-    auth.onAuthStateChanged(function(user) {
-      if (authResolved) return;
-      authResolved = true;
-      clearTimeout(authTimeout);
-
-      if (user) {
-        /* Signed in — ALWAYS load fresh profile from Firestore (not localStorage) */
-        /* This ensures all devices show the same up-to-date data */
-        db.collection("users").where("uid", "==", user.uid).limit(1).get()
-          .then(snap => {
-            if (!snap.empty) {
-              S.user = snap.docs[0].data();
-              /* Also load project from Firestore if available */
-              if (S.user.companyName || S.user.projectName) {
-                S.project = {
-                  companyName  : S.user.companyName  || "",
-                  projectName  : S.user.projectName  || "",
-                  projectCode  : S.user.projectCode  || "",
-                  country      : S.user.country      || "",
-                  projectLocation: S.user.projectLocation || "",
-                  projectType  : S.user.projectType  || "",
-                  companyType  : S.user.companyType  || "",
-                };
-              }
-              /* Cache locally for offline use */
-              localStorage.setItem("dtm_user_v1", JSON.stringify(S.user));
-              if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
-              renderApp();
-            } else {
-              /* Signed in but no Firestore profile yet — go to setup */
-              clearAllLocalData();
-              renderProfileSetup();
-            }
-          })
-          .catch(() => {
-            /* Firestore offline — use cached local data if available */
-            const local = localStorage.getItem("dtm_user_v1");
-            if (local) { try { S.user = JSON.parse(local); renderApp(); return; } catch(e){} }
-            renderLoginScreen();
-          });
-      } else {
-        /* NOT signed in — wipe ALL old local data so no stale profile shows */
-        clearAllLocalData();
-        renderLoginScreen();
-      }
-    });
-    return; /* wait for onAuthStateChanged */
-  }
-
-  const savedProject = localStorage.getItem("dtm_project_v1");
+  /* ── STEP 1: Show something immediately — never leave user on spinner ── */
   const savedUser    = localStorage.getItem("dtm_user_v1");
-  if (savedProject) {
-    S.project = JSON.parse(savedProject);
-    if (savedUser) {
-      S.user = JSON.parse(savedUser);
+  const savedProject = localStorage.getItem("dtm_project_v1");
+
+  if (savedUser && savedProject) {
+    /* Returning user — load app instantly from cache */
+    try {
+      S.user    = JSON.parse(savedUser);
+      S.project = JSON.parse(savedProject);
       renderApp();
-    } else {
-      renderProfileSetup();
+    } catch(e) {
+      renderLoginScreen();
     }
   } else {
-    renderProjectSetup();
+    /* New / incognito user — show login screen right away, no waiting */
+    renderLoginScreen();
   }
+
+  /* ── STEP 2: Firebase validates in background (silent, no spinner) ── */
+  if (!FB_OK || !auth) return;
+
+  let authDone = false;
+  const authTimeout = setTimeout(function() { authDone = true; }, 6000);
+
+  auth.onAuthStateChanged(function(user) {
+    if (authDone) return;
+    authDone = true;
+    clearTimeout(authTimeout);
+
+    if (user) {
+      /* Firebase says logged in — refresh profile from Firestore */
+      db.collection("users").where("uid", "==", user.uid).limit(1).get()
+        .then(function(snap) {
+          if (!snap.empty) {
+            S.user = snap.docs[0].data();
+            if (S.user.companyName || S.user.projectName) {
+              S.project = {
+                companyName    : S.user.companyName     || "",
+                projectName    : S.user.projectName     || "",
+                projectCode    : S.user.projectCode     || "",
+                country        : S.user.country         || "",
+                projectLocation: S.user.projectLocation || "",
+                projectType    : S.user.projectType     || "",
+                companyType    : S.user.companyType     || "",
+              };
+            }
+            localStorage.setItem("dtm_user_v1", JSON.stringify(S.user));
+            if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
+            renderApp(); /* switch from login screen to app */
+          } else {
+            clearAllLocalData();
+            renderProfileSetup();
+          }
+        })
+        .catch(function() {
+          /* Firestore offline — if we already loaded from cache above, stay on app */
+          if (!S.user) renderLoginScreen();
+        });
+    } else {
+      /* Firebase says NOT logged in — clear stale cache, ensure login screen */
+      clearAllLocalData();
+      const appEl = document.getElementById("app");
+      if (appEl && !appEl.querySelector(".login-wrap")) {
+        renderLoginScreen();
+      }
+    }
+  });
 }
 
 /* ════════════════════════════════════════════════════
@@ -3524,11 +3515,7 @@ function anPrint(empNum) {
 
 /* ── Start ── */
 document.addEventListener("DOMContentLoaded", boot);
-
-/* ── Nuclear fallback: if spinner still showing after 8s, force login screen ── */
-document.addEventListener("DOMContentLoaded", function() {
-  setTimeout(function() {
-    const app = document.getElementById("app");
-    if (app && app.querySelector(".loading-state")) {
-      console.warn("[DTM] Spinner still showing after 8s — forcing login screen");
-      try
+</script>
+</body>
+</html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
