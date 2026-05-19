@@ -386,6 +386,9 @@
     /* ══ DESIGN B — LEFT-BORDER TASK ROWS ══ */
     .mt-row { display: flex; align-items: stretch; border-bottom: 1px solid #f0f0f0; background: #fff; }
     .mt-row:hover { background: #fafafa; }
+    .mt-row-done { background: #f0faf7 !important; opacity: 0.72; }
+    .mt-row-done .mt-row-title { color: #5a7a6e !important; }
+    .mt-row-done:hover { background: #e8f5f0 !important; opacity: 0.85; }
     .mt-row-bar { width: 4px; flex-shrink: 0; border-radius: 0; }
     .bar-pend { background: #e6c200; }
     .bar-done { background: #0F6E56; }
@@ -2192,12 +2195,16 @@ async function showAssignedTasksSummary() {
         const taskText  = t.taskDescription || t.taskName || t.task || "—";
         const issued    = t.assignedDate || t.createdAt || "—";
         const doneDate  = isDone ? (t.completedDate || "—") : "—";
-        return `<tr>
+        const rowStyle = isDone
+          ? 'background:#f0faf7;opacity:0.72;'
+          : '';
+        const textStyle = isDone ? 'color:#5a7a6e;' : '';
+        return `<tr style="${rowStyle}">
           <td class="ats-sr">${i + 1}</td>
-          <td style="max-width:180px;word-break:break-word;font-size:12px;line-height:1.4;">${esc(taskText)}</td>
-          <td><div class="ats-emp-name">${esc(empName)}</div><div class="ats-emp-pos">${esc(empPos)}</div></td>
-          <td style="font-size:11px;color:#64748b;">${esc(empNum)}</td>
-          <td style="font-size:11px;white-space:nowrap;">${esc(issued)}</td>
+          <td style="max-width:180px;word-break:break-word;font-size:12px;line-height:1.4;${textStyle}">${esc(taskText)}</td>
+          <td><div class="ats-emp-name" style="${textStyle}">${esc(empName)}</div><div class="ats-emp-pos">${esc(empPos)}</div></td>
+          <td style="font-size:11px;color:#94a3b8;">${esc(empNum)}</td>
+          <td style="font-size:11px;white-space:nowrap;${textStyle}">${esc(issued)}</td>
           <td><span class="ats-badge ${isGeneral ? 'ats-badge-gen' : 'ats-badge-per'}">${isGeneral ? 'General' : 'Personal'}</span></td>
           <td><span class="ats-badge ${isDone ? 'ats-badge-done' : 'ats-badge-pend'}">${isDone ? '&#10003; Done' : '&#9200; Pending'}</span></td>
           <td style="font-size:11px;color:${isDone ? '#16a34a' : '#94a3b8'};white-space:nowrap;">${isDone ? esc(doneDate) : '—'}</td>
@@ -2485,7 +2492,7 @@ async function loadMyTasks() {
           : `<span class="badge b-pend">Pending</span>`);
     const genTag   = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
 
-    return `<div class="mt-row">
+    return `<div class="mt-row${isDone ? ' mt-row-done' : ''}">
       <div class="mt-row-bar ${barClass}"></div>
       <div class="mt-row-body">
         <div class="mt-row-title">#${t.srNumber} &nbsp;${esc(t.taskDescription)}${genTag}</div>
@@ -3573,11 +3580,4 @@ function anPrint(empNum) {
     tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0}
     tbody tr:nth-child(even) td{background:#f8fafc}
     .rec-box{border:1.5px solid ${g.bar};border-radius:6px;padding:12px;margin:8px 0}
-    .rec-type{font-size:14px;font-weight:800;color:${g.txt};margin-bottom:6px}
-    .rec-note{font-size:12px;color:#334155;line-height:1.6;min-height:36px}
-    .sig-row{display:flex;gap:24px;margin-top:22px}
-    .sig-box{flex:1;border-top:1.5px solid #0f172a;padding-top:6px}
-    .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
-    .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:10px;color:#94a3b8}
-  
-    /* ===== PM PIN Modal - Profession
+    .rec-type{font-size:14px;font-weight:800;color
