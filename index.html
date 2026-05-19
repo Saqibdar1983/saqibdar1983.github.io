@@ -2,20 +2,34 @@
 <html lang="en">
 <head>
 <script>
-/* ── NUCLEAR SW CLEANUP: Kill any SW found, then reload to get fresh HTML ── */
+/* ── Clean up ?_r= cache-busting param left by kill SW ── */
+(function() {
+  try {
+    if (location.search.includes('_r=')) {
+      var p = new URLSearchParams(location.search);
+      p.delete('_r');
+      var s = p.toString();
+      history.replaceState({}, '', location.pathname + (s ? '?' + s : ''));
+    }
+  } catch(e) {}
+})();
+
+/* ── Kill any remaining SW, reload fresh if found ── */
 (async function killAllSW() {
   try {
-    let killed = false;
+    var killed = false;
     if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) { await r.unregister(); killed = true; }
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for (var r of regs) { await r.unregister(); killed = true; }
     }
     if ('caches' in window) {
-      const keys = await caches.keys();
-      for (const k of keys) await caches.delete(k);
+      var keys = await caches.keys();
+      for (var k of keys) await caches.delete(k);
     }
-    /* If we just killed a SW, reload NOW to get fresh HTML from server */
-    if (killed) { window.location.reload(true); }
+    if (killed) {
+      /* Use cache-busted URL so HTTP cache is bypassed */
+      location.href = '/?_r=' + Date.now();
+    }
   } catch(e) {}
 })();
 </script>
@@ -3578,8 +3592,4 @@ function anPrint(empNum) {
     .stat-box{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:9px;text-align:center}
     .stat-n{font-size:22px;font-weight:800}.stat-l{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
     .grade-row{display:flex;align-items:center;gap:14px;background:${g.bg};border-radius:8px;padding:12px;margin:10px 0}
-    .grade-circ{width:50px;height:50px;border-radius:50%;border:3px solid ${g.bar};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:${g.txt};background:${g.bg}}
-    .eff-bar{background:#e2e8f0;border-radius:4px;height:7px;margin-top:6px}.eff-fill{background:${g.bar};height:7px;border-radius:4px;width:${d.efficiency}%}
-    table{width:100%;border-collapse:collapse;font-size:11px}
-    thead th{background:#0f172a;color:#fff;padding:6px 8px;text-align:left}
-    tbo
+    .grade-circ{width:50px;height:50px;border-radius:50%;border:3px solid ${g.bar};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:${g.txt};background:$
