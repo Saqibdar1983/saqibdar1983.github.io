@@ -494,6 +494,36 @@
     .hs-card-desc { font-size: 11px; color: #64748b; line-height: 1.35; }
     .hs-chip { font-size: 9px; font-weight: bold; padding: 2px 8px; border-radius: 8px; display: inline-block; margin-top: 6px; }
     .hs-card-arrow { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; flex-shrink: 0; }
+    /* ── Assigned Tasks Summary Modal ── */
+    .modal-wide { background:#fff; width:100%; max-width:760px; max-height:94vh; overflow-y:auto; border-radius:4px; display:flex; flex-direction:column; }
+    .ats-hdr { background:#0f172a; padding:13px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; flex-shrink:0; }
+    .ats-hdr-title { color:#fff; font-size:14px; font-weight:bold; letter-spacing:.3px; }
+    .ats-stats { display:flex; gap:18px; }
+    .ats-stat { text-align:center; }
+    .ats-stat-val { font-size:20px; font-weight:bold; color:#fbbf24; line-height:1; }
+    .ats-stat-lbl { font-size:9px; color:#94a3b8; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
+    .ats-sub { background:#1e293b; padding:7px 16px; display:flex; gap:20px; flex-wrap:wrap; flex-shrink:0; }
+    .ats-sub-item { font-size:11px; color:#94a3b8; }
+    .ats-sub-item span { color:#e2e8f0; font-weight:600; }
+    .ats-table-wrap { overflow-x:auto; flex:1; }
+    .ats-table { width:100%; border-collapse:collapse; font-size:12px; min-width:640px; }
+    .ats-table thead tr { background:#f8fafc; border-bottom:1.5px solid #e2e8f0; position:sticky; top:0; }
+    .ats-table thead th { padding:9px 10px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#64748b; white-space:nowrap; }
+    .ats-table tbody tr { border-bottom:0.5px solid #e2e8f0; }
+    .ats-table tbody tr:last-child { border-bottom:none; }
+    .ats-table tbody tr:hover { background:#f8fafc; }
+    .ats-table tbody td { padding:9px 10px; color:#0f172a; vertical-align:middle; }
+    .ats-sr { color:#94a3b8; font-size:11px; }
+    .ats-emp-name { font-weight:600; font-size:12px; color:#0f172a; }
+    .ats-emp-pos { font-size:10px; color:#64748b; }
+    .ats-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+    .ats-badge-done { background:#dcfce7; color:#166534; }
+    .ats-badge-pend { background:#fef3c7; color:#92400e; }
+    .ats-badge-gen { background:#e0f2fe; color:#075985; }
+    .ats-badge-per { background:#f3e8ff; color:#6b21a8; }
+    .ats-stat-box-click { cursor:pointer; transition:transform .1s, box-shadow .1s; }
+    .ats-stat-box-click:active { transform:scale(.97); }
+
     /* Top-bar Home button */
     .tt-home-top { background: #0F6E56; border: none; color: #fff; width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; flex-shrink: 0; box-shadow: 0 2px 8px rgba(15,110,86,0.35); }
     .tt-home-top:hover { background: #085041; }
@@ -1992,10 +2022,11 @@ function renderApp() {
           <div class="hs-stat-l">My Tasks</div>
           <div class="hs-stat-sub"><span id="hs-my-done">—</span> done &nbsp;·&nbsp; <span id="hs-my-pend" style="color:#e6a817;">—</span> pending</div>
         </div>
-        <div class="hs-stat-box">
+        <div class="hs-stat-box ats-stat-box-click" onclick="showAssignedTasksSummary()" title="Tap to view full summary">
           <div class="hs-stat-n" id="hs-team-total" style="color:#0F6E56;">—</div>
           <div class="hs-stat-l">Team Tasks</div>
           <div class="hs-stat-sub"><span id="hs-team-done">—</span> done &nbsp;·&nbsp; <span id="hs-team-pend" style="color:#e6a817;">—</span> pending</div>
+          <div style="font-size:9px;color:#0F6E56;margin-top:4px;font-weight:600;">▶ TAP FOR SUMMARY</div>
         </div>
         <div class="hs-stat-box">
           <div class="hs-stat-n" id="hs-total-done" style="color:#0F6E56;">—</div>
@@ -2098,6 +2129,122 @@ async function loadHomeStats() {
 }
 /* Alias for backward compat */
 function loadTeamStats() { loadHomeStats(); }
+
+/* ════════════════════════════════════════════════════
+   ASSIGNED TASKS SUMMARY — Design A
+   Opens when manager taps the "Team Tasks" stat box
+   ════════════════════════════════════════════════════ */
+async function showAssignedTasksSummary() {
+  const projName   = S.project?.projectName  || S.user?.projectName  || "—";
+  const compName   = S.project?.companyName   || S.user?.companyName  || "IHCC";
+  const mgrName    = S.user?.name             || "Manager";
+  const teamCount  = S.employees?.length      || 0;
+
+  /* Show immediately with a loading state */
+  const loadingHTML = `<div class="modal-wide">
+    <div class="ats-hdr">
+      <div class="ats-hdr-title">&#128203; Assigned Tasks Summary</div>
+      <button style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;" onclick="closeOverlay()">&#215;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:40px;color:#64748b;">Loading tasks...</div>
+  </div>`;
+  showOverlay(loadingHTML);
+
+  /* Fetch all tasks assigned BY this manager */
+  let tasks = [];
+  if (FB_OK && S.user?.employmentNumber) {
+    try {
+      const snap = await db.collection("tasks")
+        .where("managerEmpNumber", "==", S.user.employmentNumber)
+        .get();
+      tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) { console.warn("ATS fetch error:", e); }
+  }
+
+  /* Sort: pending first, then done; within each group by date desc */
+  tasks.sort((a, b) => {
+    const aD = (a.status === "completed" || a.status === "completed_with_comments") ? 1 : 0;
+    const bD = (b.status === "completed" || b.status === "completed_with_comments") ? 1 : 0;
+    return aD - bD;
+  });
+
+  /* Build employee designation lookup map */
+  const empMap = {};
+  (S.employees || []).forEach(e => {
+    empMap[e.employmentNumber] = e.designation || e.position || "—";
+  });
+
+  /* Stats */
+  const total   = tasks.length;
+  const done    = tasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+  const pending = total - done;
+  const today   = fmtDate(new Date());
+
+  /* Build table rows */
+  const rows = tasks.length === 0
+    ? `<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">No tasks assigned yet.</td></tr>`
+    : tasks.map((t, i) => {
+        const isDone    = t.status === "completed" || t.status === "completed_with_comments";
+        const isGeneral = t.isGeneral === true;
+        const empName   = isGeneral ? ("General — " + (t.department || "All")) : (t.assignedToName || "—");
+        const empNum    = isGeneral ? "—" : (t.assignedToEmpNumber || "—");
+        const empPos    = isGeneral ? "All Team" : (empMap[empNum] || "—");
+        const taskText  = t.taskDescription || t.taskName || t.task || "—";
+        const issued    = t.assignedDate || t.createdAt || "—";
+        const doneDate  = isDone ? (t.completedDate || "—") : "—";
+        return `<tr>
+          <td class="ats-sr">${i + 1}</td>
+          <td style="max-width:180px;word-break:break-word;font-size:12px;line-height:1.4;">${esc(taskText)}</td>
+          <td><div class="ats-emp-name">${esc(empName)}</div><div class="ats-emp-pos">${esc(empPos)}</div></td>
+          <td style="font-size:11px;color:#64748b;">${esc(empNum)}</td>
+          <td style="font-size:11px;white-space:nowrap;">${esc(issued)}</td>
+          <td><span class="ats-badge ${isGeneral ? 'ats-badge-gen' : 'ats-badge-per'}">${isGeneral ? 'General' : 'Personal'}</span></td>
+          <td><span class="ats-badge ${isDone ? 'ats-badge-done' : 'ats-badge-pend'}">${isDone ? '&#10003; Done' : '&#9200; Pending'}</span></td>
+          <td style="font-size:11px;color:${isDone ? '#16a34a' : '#94a3b8'};white-space:nowrap;">${isDone ? esc(doneDate) : '—'}</td>
+        </tr>`;
+      }).join("");
+
+  const html = `<div class="modal-wide">
+    <div class="ats-hdr">
+      <div class="ats-hdr-title">&#128203; Assigned Tasks Summary</div>
+      <div class="ats-stats">
+        <div class="ats-stat"><div class="ats-stat-val">${total}</div><div class="ats-stat-lbl">Total</div></div>
+        <div class="ats-stat"><div class="ats-stat-val" style="color:#4ade80;">${done}</div><div class="ats-stat-lbl">Done</div></div>
+        <div class="ats-stat"><div class="ats-stat-val" style="color:#fb923c;">${pending}</div><div class="ats-stat-lbl">Pending</div></div>
+      </div>
+      <button style="background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer;line-height:1;padding:0;" onclick="closeOverlay()">&#215;</button>
+    </div>
+    <div class="ats-sub">
+      <div class="ats-sub-item">Project: <span>${esc(projName)}</span></div>
+      <div class="ats-sub-item">Company: <span>${esc(compName)}</span></div>
+      <div class="ats-sub-item">Manager: <span>${esc(mgrName)}</span></div>
+      <div class="ats-sub-item">Team: <span>${teamCount} Members</span></div>
+      <div class="ats-sub-item">Date: <span>${today}</span></div>
+    </div>
+    <div class="ats-table-wrap">
+      <table class="ats-table">
+        <thead>
+          <tr>
+            <th style="width:28px">#</th>
+            <th style="min-width:160px">Task</th>
+            <th style="min-width:130px">Assigned To</th>
+            <th style="width:70px">Emp #</th>
+            <th style="width:80px">Issued</th>
+            <th style="width:72px">Category</th>
+            <th style="width:75px">Status</th>
+            <th style="width:80px">Done Date</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;flex-shrink:0;">
+      <button onclick="closeOverlay()" style="background:#0f172a;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+    </div>
+  </div>`;
+
+  showOverlay(html);
+}
 
 /* ── Stub kept for backward compat ── */
 function setActiveTab() {}
@@ -3433,89 +3580,4 @@ function anPrint(empNum) {
     .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
     .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:10px;color:#94a3b8}
   
-    /* ===== PM PIN Modal - Professional ===== */
-    .pm-modal-bg{position:fixed !important;top:0 !important;left:0 !important;width:100vw !important;height:100vh !important;background:rgba(10,20,30,0.65) !important;backdrop-filter:blur(4px);z-index:99999 !important;display:flex !important;align-items:center !important;justify-content:center !important;}
-    .pm-modal{background:#fff;border-radius:20px;width:340px;max-width:92vw;box-shadow:0 30px 80px rgba(0,0,0,0.35);overflow:hidden;animation:pmSlideUp 0.22s ease;}
-    @keyframes pmSlideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-    .pm-modal-head{background:linear-gradient(135deg,#0F6E56 0%,#0d5c48 100%);padding:24px 24px 20px;text-align:center;}
-    .pm-modal-icon{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 12px;}
-    .pm-modal-title{font-size:16px;font-weight:800;color:#fff;letter-spacing:.3px;margin:0;}
-    .pm-modal-sub{font-size:11px;color:rgba(255,255,255,0.78);margin-top:5px;line-height:1.5;}
-    .pm-modal-body{padding:22px 24px 24px;}
-    .pm-field-lbl{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;}
-    .pm-pin-full{width:100%;padding:13px 16px;border:2px solid #e2e8f0;border-radius:12px;font-size:20px;letter-spacing:10px;text-align:center;font-weight:700;color:#0f172a;outline:none;background:#f8fafc;box-sizing:border-box;transition:border-color .15s,box-shadow .15s;margin-bottom:14px;}
-    .pm-pin-full:focus{border-color:#0F6E56;box-shadow:0 0 0 3px rgba(15,110,86,0.15);background:#fff;}
-    .pm-modal-err{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;padding:8px 12px;margin-bottom:14px;display:none;text-align:center;}
-    .pm-modal-btns{display:flex;gap:10px;}
-    .pm-modal-btn{flex:1;padding:13px;border-radius:12px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s;}
-    .pm-modal-btn.confirm{background:#0F6E56;color:#fff;}
-    .pm-modal-btn.confirm:hover{opacity:.88;}
-    .pm-modal-btn.cancel{background:#f1f5f9;color:#64748b;}
-    .pm-modal-btn.cancel:hover{background:#e2e8f0;}
-</style></head><body>
-  <div class="hdr">
-    <div><div class="hdr-title">${esc(S.project?.companyName||'IHCC')}</div><div class="hdr-sub">Employee Performance Evaluation Report</div></div>
-    <div class="hdr-right">Date: ${today}<br>Ref: PER-${esc(emp.employmentNumber)}-2025</div>
-  </div>
-  <div class="wrap">
-    <div class="sec"><div class="sec-title">Employee Information</div>
-      <div class="info-grid">
-        <div class="inf"><span class="inf-l">Full Name</span><span class="inf-v">${esc(emp.name)}</span></div>
-        <div class="inf"><span class="inf-l">Emp Number</span><span class="inf-v">${esc(emp.employmentNumber)}</span></div>
-        <div class="inf"><span class="inf-l">Designation</span><span class="inf-v">${esc(emp.designation)}</span></div>
-        <div class="inf"><span class="inf-l">Department</span><span class="inf-v">${esc(emp.department)}</span></div>
-        <div class="inf"><span class="inf-l">Joined Project</span><span class="inf-v">01 Jan 2025</span></div>
-        <div class="inf"><span class="inf-l">Eval Period</span><span class="inf-v">01 Jan – 15 May 2025</span></div>
-      </div>
-    </div>
-    <div class="sec"><div class="sec-title">Project &amp; Manager Details</div>
-      <div class="info-grid">
-        <div class="inf"><span class="inf-l">Project Name</span><span class="inf-v">${esc(emp.projectName||S.project?.projectName||'N/A')}</span></div>
-        <div class="inf"><span class="inf-l">Manager Name</span><span class="inf-v">${esc(S.user?.name||'N/A')}</span></div>
-        <div class="inf"><span class="inf-l">Company</span><span class="inf-v">${esc(S.project?.companyName||'N/A')}</span></div>
-        <div class="inf"><span class="inf-l">Manager Emp#</span><span class="inf-v">${esc(S.user?.employmentNumber||'N/A')}</span></div>
-        <div class="inf"><span class="inf-l">Location</span><span class="inf-v">${esc(city)||'N/A'}</span></div>
-        <div class="inf"><span class="inf-l">Project Period</span><span class="inf-v">${esc(S.project?.startDate||'')} – ${esc(S.project?.endDate||'')}</span></div>
-      </div>
-    </div>
-    <div class="sec"><div class="sec-title">Performance Summary</div>
-      <div class="stat-row">
-        <div class="stat-box"><div class="stat-n" style="color:#0F6E56">${d.total}</div><div class="stat-l">Assigned</div></div>
-        <div class="stat-box"><div class="stat-n" style="color:#0F6E56">${d.completed}</div><div class="stat-l">Completed</div></div>
-        <div class="stat-box"><div class="stat-n" style="color:#e6a817">${d.pending}</div><div class="stat-l">Pending</div></div>
-        <div class="stat-box"><div class="stat-n" style="color:#A32D2D">${d.overdue}</div><div class="stat-l">Overdue</div></div>
-      </div>
-      <div class="grade-row">
-        <div class="grade-circ">${g.letter}</div>
-        <div style="flex:1">
-          <div style="font-size:15px;font-weight:800;color:${g.txt}">${g.title}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:3px">${g.desc}</div>
-          <div style="font-size:12px;font-weight:700;color:${g.bar};margin-top:4px">Efficiency: ${d.efficiency}%</div>
-          <div class="eff-bar"><div class="eff-fill"></div></div>
-        </div>
-      </div>
-    </div>
-    <div class="sec"><div class="sec-title">Task Details (${d.total} tasks)</div>
-      <table><thead><tr><th>Task Description</th><th style="width:110px">Assigned Date</th><th style="width:80px">Status</th></tr></thead>
-      <tbody>${taskRows}</tbody></table>
-    </div>
-    <div class="sec"><div class="sec-title">Manager Recommendation</div>
-      <div style="border:2.5px solid #0f172a;border-radius:8px;overflow:hidden;margin:10px 0"><div style="background:#0f172a;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">&#9733;</span><div><div style="font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase">Manager Recommendation</div><div style="font-size:10px;opacity:.65;margin-top:2px">Official decision — for HR records</div></div></div><div style="padding:12px 14px;background:#f8fafc"><div style="font-size:18px;font-weight:900;color:#0f172a;text-align:center;padding:10px 14px;margin-bottom:8px;background:#fff;border:2.5px solid ${g.bar};border-radius:6px;letter-spacing:2px;text-transform:uppercase">${esc(rec)}</div><div style="font-size:12px;color:#334155;line-height:1.7;min-height:36px;background:#fff;padding:8px;border-radius:4px;border:0.5px solid #e2e8f0">${esc(note)}</div></div></div>
-    </div>
-    <div class="sig-row">
-      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-weight:700">${esc(S.user?.name||'')}</div><div class="sig-lbl">${esc(S.user?.designation||'')} · ${today}</div></div>
-      <div class="sig-box"><div class="sig-lbl">HR Department</div><div class="sig-space"></div><div class="sig-lbl">Authorized Signature · Date</div></div>
-      <div class="sig-box"><div class="sig-lbl">Employee Acknowledgement</div><div class="sig-space"></div><div class="sig-lbl">${esc(emp.name)} · Date</div></div>
-    </div>
-    <div class="footer">Daily Task Manager — Performance Evaluation · ${esc(S.project?.companyName||'IHCC')} · Confidential Document</div>
-  </div></body></html>`;
-  const w = window.open('','_blank','width=860,height=1100');
-  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),600); }
-}
-
-/* ── Start ── */
-document.addEventListener("DOMContentLoaded", boot);
-</script>
-</body>
-</html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+    /* ===== PM PIN Modal - Profession
