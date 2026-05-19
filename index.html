@@ -658,7 +658,7 @@
 
 <div id="dtm-offline-banner">&#9888; No internet connection — working offline. Data will sync when reconnected.</div>
 <div id="dtm-err-toast"></div>
-<div id="app"><div class="loading-state" style="padding-top:80px;"></div></div>
+<div id="app"></div>
 
 <!-- Firebase loaded dynamically in boot() — never blocks page rendering -->
 
@@ -3592,4 +3592,66 @@ function anPrint(empNum) {
     .stat-box{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:9px;text-align:center}
     .stat-n{font-size:22px;font-weight:800}.stat-l{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
     .grade-row{display:flex;align-items:center;gap:14px;background:${g.bg};border-radius:8px;padding:12px;margin:10px 0}
-    .grade-circ{width:50px;height:50px;border-radius:50%;border:3px solid ${g.bar};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:${g.txt};background:$
+    .grade-circ{width:50px;height:50px;border-radius:50%;border:3px solid ${g.bar};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:${g.txt};background:${g.bg}}
+    .eff-bar{background:#e2e8f0;border-radius:4px;height:7px;margin-top:6px}.eff-fill{background:${g.bar};height:7px;border-radius:4px;width:${d.efficiency}%}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    thead th{background:#0f172a;color:#fff;padding:6px 8px;text-align:left;font-size:10px}
+    tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0;font-size:11px}
+    tbody tr:nth-child(even) td{background:#f8fafc}
+    .rec-box{border:1.5px solid ${g.bar};border-radius:6px;padding:12px;margin:8px 0}
+    .sig-row{display:flex;gap:16px;margin-top:18px}
+    .sig-box{flex:1;border-top:1.5px solid #0f172a;padding-top:6px}
+    .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
+    .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:9px;color:#94a3b8}
+  </style></head><body>
+  <div class="hdr"><div><div class="hdr-title">${esc(S.project?.companyName||'IHCC')}</div><div class="hdr-sub">Performance Evaluation Report</div></div><div class="hdr-right">${today}<br>${esc(city)}</div></div>
+  <div class="wrap" style="padding:10px 16px">
+    <div class="sec"><div class="sec-title">Employee Information</div>
+      <div class="info-grid">
+        <div class="inf"><span class="inf-l">Name</span><span class="inf-v">${esc(emp.name||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Emp. Number</span><span class="inf-v">${esc(emp.employmentNumber||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Position</span><span class="inf-v">${esc(emp.designation||emp.position||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Department</span><span class="inf-v">${esc(emp.department||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Email</span><span class="inf-v">${esc(emp.email||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Report Date</span><span class="inf-v">${today}</span></div>
+      </div>
+    </div>
+    <div class="sec"><div class="sec-title">Performance Summary</div>
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-n">${d.total}</div><div class="stat-l">Total Tasks</div></div>
+        <div class="stat-box"><div class="stat-n">${d.done}</div><div class="stat-l">Completed</div></div>
+        <div class="stat-box"><div class="stat-n">${d.total-d.done}</div><div class="stat-l">Pending</div></div>
+        <div class="stat-box"><div class="stat-n">${d.efficiency}%</div><div class="stat-l">Efficiency</div></div>
+      </div>
+      <div class="grade-row">
+        <div class="grade-circ">${g.letter}</div>
+        <div><div style="font-size:15px;font-weight:800;color:${g.txt}">${g.label}</div><div style="font-size:11px;color:#64748b;margin-top:4px">${d.efficiency}% task completion rate</div>
+          <div class="eff-bar"><div class="eff-fill"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="sec"><div class="sec-title">Task Details (${d.total} tasks)</div>
+      <table><thead><tr><th>Task Description</th><th style="width:110px">Assigned Date</th><th style="width:80px">Status</th></tr></thead>
+      <tbody>${taskRows}</tbody></table>
+    </div>
+    <div class="sec"><div class="sec-title">Manager Recommendation</div>
+      <div class="rec-box"><strong style="color:${g.bar}">${esc(rec)}</strong><br><span style="font-size:11px;color:#374151;margin-top:6px;display:block">${esc(note)}</span></div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-weight:700;font-size:11px">${esc(S.user?.name||'Manager')}</div></div>
+      <div class="sig-box"><div class="sig-lbl">HR Department</div><div class="sig-space"></div><div class="sig-lbl">Authorized Signature</div></div>
+      <div class="sig-box"><div class="sig-lbl">Employee Acknowledgement</div><div class="sig-space"></div><div class="sig-lbl">Employee Signature</div></div>
+    </div>
+    <div class="footer">Daily Task Manager — Performance Evaluation · ${esc(S.project?.companyName||'IHCC')} · Confidential</div>
+  </div></body></html>`;
+  const w = window.open('','_blank','width=860,height=1100');
+  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),600); }
+}
+
+/* ══════════════════════════════════════════════════════
+   BOOT — called when DOM is ready
+   ══════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
