@@ -646,10 +646,7 @@
 <div id="dtm-err-toast"></div>
 <div id="app"><div class="loading-state" style="padding-top:80px;"></div></div>
 
-<!-- Firebase (compat SDK — no build step needed) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<!-- Firebase loaded dynamically in boot() — never blocks page rendering -->
 
 <script>
 "use strict";
@@ -1223,50 +1220,40 @@ async function phCleanAll() {
   }
 }
 
-function boot() {
-  phClean(); /* Remove photos older than 3 days on every app start */
-  setTimeout(phCleanAll, 5000); /* Also clean Firestore photos after 5s delay */
-  initFirebase();
+/* ── Clear all local data (top-level so all functions can call it) ── */
+function clearAllLocalData() {
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith("dtm_") || k.startsWith("pm_")) localStorage.removeItem(k);
+  });
+  S.user = null; S.project = null; S.myTasks = []; S.employees = []; S.tasks = [];
+}
 
-  /* ── Clear all local storage data (called on sign-out or unauthenticated load) ── */
-  function clearAllLocalData() {
-    const keysToKeep = []; /* nothing to keep — fresh start on every login */
-    const allKeys = Object.keys(localStorage);
-    allKeys.forEach(k => {
-      if (k.startsWith("dtm_") || k.startsWith("pm_")) {
-        localStorage.removeItem(k);
-      }
-    });
-    S.user    = null;
-    S.project = null;
-    S.myTasks = [];
-    S.employees = [];
-    S.tasks   = [];
-  }
+/* ── Load a script dynamically, resolve even on error (fail silent) ── */
+function loadScript(src) {
+  return new Promise(function(resolve) {
+    if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+    var s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = resolve; /* fail silently — app works without Firebase (offline mode) */
+    document.head.appendChild(s);
+  });
+}
 
-  /* ── STEP 1: Show something immediately — never leave user on spinner ── */
-  const savedUser    = localStorage.getItem("dtm_user_v1");
-  const savedProject = localStorage.getItem("dtm_project_v1");
+/* ── Load Firebase scripts then validate auth in background ── */
+async function loadFirebaseAndInit() {
+  try {
+    /* Load in sequence — order matters (app → firestore → auth) */
+    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
+    initFirebase();
+  } catch(e) { return; } /* Firebase unavailable — stay on whatever screen is showing */
 
-  if (savedUser && savedProject) {
-    /* Returning user — load app instantly from cache */
-    try {
-      S.user    = JSON.parse(savedUser);
-      S.project = JSON.parse(savedProject);
-      renderApp();
-    } catch(e) {
-      renderLoginScreen();
-    }
-  } else {
-    /* New / incognito user — show login screen right away, no waiting */
-    renderLoginScreen();
-  }
-
-  /* ── STEP 2: Firebase validates in background (silent, no spinner) ── */
   if (!FB_OK || !auth) return;
 
   let authDone = false;
-  const authTimeout = setTimeout(function() { authDone = true; }, 6000);
+  const authTimeout = setTimeout(function() { authDone = true; }, 8000);
 
   auth.onAuthStateChanged(function(user) {
     if (authDone) return;
@@ -1274,7 +1261,6 @@ function boot() {
     clearTimeout(authTimeout);
 
     if (user) {
-      /* Firebase says logged in — refresh profile from Firestore */
       db.collection("users").where("uid", "==", user.uid).limit(1).get()
         .then(function(snap) {
           if (!snap.empty) {
@@ -1292,25 +1278,41 @@ function boot() {
             }
             localStorage.setItem("dtm_user_v1", JSON.stringify(S.user));
             if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
-            renderApp(); /* switch from login screen to app */
+            renderApp();
           } else {
             clearAllLocalData();
             renderProfileSetup();
           }
         })
-        .catch(function() {
-          /* Firestore offline — if we already loaded from cache above, stay on app */
-          if (!S.user) renderLoginScreen();
-        });
+        .catch(function() { /* Firestore offline — stay on current screen */ });
     } else {
-      /* Firebase says NOT logged in — clear stale cache, ensure login screen */
       clearAllLocalData();
       const appEl = document.getElementById("app");
-      if (appEl && !appEl.querySelector(".login-wrap")) {
-        renderLoginScreen();
-      }
+      if (appEl && !appEl.querySelector(".login-wrap")) renderLoginScreen();
     }
   });
+}
+
+function boot() {
+  phClean();
+  setTimeout(phCleanAll, 5000);
+
+  /* ── INSTANT: show login or app from localStorage — ZERO delay, no spinner ── */
+  const savedUser    = localStorage.getItem("dtm_user_v1");
+  const savedProject = localStorage.getItem("dtm_project_v1");
+
+  if (savedUser && savedProject) {
+    try {
+      S.user    = JSON.parse(savedUser);
+      S.project = JSON.parse(savedProject);
+      renderApp();
+    } catch(e) { renderLoginScreen(); }
+  } else {
+    renderLoginScreen();
+  }
+
+  /* ── BACKGROUND: Firebase loads async, never blocks the UI ── */
+  loadFirebaseAndInit();
 }
 
 /* ════════════════════════════════════════════════════
@@ -3580,5 +3582,4 @@ function anPrint(empNum) {
     .eff-bar{background:#e2e8f0;border-radius:4px;height:7px;margin-top:6px}.eff-fill{background:${g.bar};height:7px;border-radius:4px;width:${d.efficiency}%}
     table{width:100%;border-collapse:collapse;font-size:11px}
     thead th{background:#0f172a;color:#fff;padding:6px 8px;text-align:left}
-    tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0}
-    tbody tr:nth
+    tbo
