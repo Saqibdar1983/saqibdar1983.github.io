@@ -2,17 +2,20 @@
 <html lang="en">
 <head>
 <script>
-/* ── NUCLEAR SW CLEANUP: Unregister ALL service workers on every load ── */
+/* ── NUCLEAR SW CLEANUP: Kill any SW found, then reload to get fresh HTML ── */
 (async function killAllSW() {
   try {
+    let killed = false;
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
-      for (const r of regs) await r.unregister();
+      for (const r of regs) { await r.unregister(); killed = true; }
     }
     if ('caches' in window) {
       const keys = await caches.keys();
       for (const k of keys) await caches.delete(k);
     }
+    /* If we just killed a SW, reload NOW to get fresh HTML from server */
+    if (killed) { window.location.reload(true); }
   } catch(e) {}
 })();
 </script>
@@ -3578,6 +3581,4 @@ function anPrint(empNum) {
     table{width:100%;border-collapse:collapse;font-size:11px}
     thead th{background:#0f172a;color:#fff;padding:6px 8px;text-align:left}
     tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0}
-    tbody tr:nth-child(even) td{background:#f8fafc}
-    .rec-box{border:1.5px solid ${g.bar};border-radius:6px;padding:12px;margin:8px 0}
-    .rec-type{font-size:14px;font-weight:800;color
+    tbody tr:nth
