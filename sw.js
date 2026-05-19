@@ -1,5 +1,5 @@
 /* DTM Service Worker — v8 — Network First, always fresh */
-const CACHE_NAME = 'dtm-v8';
+const CACHE_NAME = 'dtm-v9';
 const SHELL = ['/index.html', '/manifest.json', '/sw.js'];
 
 /* Install — cache shell files */
