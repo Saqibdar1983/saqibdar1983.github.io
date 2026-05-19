@@ -6,7 +6,7 @@
 (async function killOldSW() {
   try {
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
-    const CURRENT = 'dtm-v8';
+    const CURRENT = 'dtm-v9';
     const cacheNames = await caches.keys();
     /* Only reload if there are caches and at least one is outdated */
     const hasOld = cacheNames.length > 0 && cacheNames.some(n => n !== CURRENT);
