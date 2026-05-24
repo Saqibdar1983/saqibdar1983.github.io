@@ -323,6 +323,31 @@
     .tt-save-btn { width: 100%; padding: 13px; background: #0F6E56; color: #fff; border: none; border-radius: 7px; font-size: 14px; font-weight: bold; cursor: pointer; letter-spacing: .3px; }
     .tt-save-btn:hover { background: #085041; }
 
+    /* ══ BELL NOTIFICATION DOT ══ */
+    .dtm-bell-wrap { display:inline-flex; align-items:center; position:relative; margin-left:6px; }
+    .dtm-bell-wrap .ti-bell { font-size:15px; color:#e53e3e; animation: dtm-bell-ring 1.2s ease infinite; }
+    @keyframes dtm-bell-ring {
+      0%,100% { transform: rotate(0deg); }
+      15%      { transform: rotate(18deg); }
+      30%      { transform: rotate(-15deg); }
+      45%      { transform: rotate(12deg); }
+      60%      { transform: rotate(-8deg); }
+      75%      { transform: rotate(4deg); }
+    }
+    .dtm-bell-badge { position:absolute; top:-5px; right:-7px; background:#e53e3e; color:#fff; font-size:9px; font-weight:700; min-width:14px; height:14px; border-radius:7px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1.5px solid #fff; line-height:1; }
+    .dtm-hdr-bell-wrap { position:relative; display:inline-flex; cursor:pointer; margin-left:10px; }
+    .dtm-hdr-bell-wrap .ti-bell { font-size:20px; color:#fff; }
+    .dtm-hdr-bell-badge { position:absolute; top:-5px; right:-6px; background:#e53e3e; color:#fff; font-size:9px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:2px solid #0F6E56; }
+
+    /* ══ FLOATING SAVE BAR ══ */
+    .dtm-float-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:min(820px,100%); z-index:9999; background:#1a1a2e; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; box-shadow:0 -4px 20px rgba(0,0,0,0.35); border-top:2px solid #0F6E56; }
+    .dtm-float-bar-msg { font-size:13px; font-weight:600; flex:1; }
+    .dtm-float-bar-msg span { font-size:11px; font-weight:400; opacity:0.75; display:block; margin-top:2px; }
+    .dtm-float-btn-save { background:#0F6E56; color:#fff; border:none; border-radius:7px; padding:10px 18px; font-size:13px; font-weight:700; cursor:pointer; letter-spacing:.3px; white-space:nowrap; }
+    .dtm-float-btn-save:hover { background:#085041; }
+    .dtm-float-btn-edit { background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,0.4); border-radius:7px; padding:10px 14px; font-size:12px; cursor:pointer; white-space:nowrap; }
+    .dtm-float-btn-edit:hover { border-color:#fff; }
+
     /* ══ SETUP STEP INDICATOR ══ */
     .setup-steps { display: flex; align-items: center; background: #111827; padding: 9px 18px; flex-shrink: 0; }
     .setup-step  { display: flex; align-items: center; gap: 5px; }
@@ -811,6 +836,8 @@ const S = {
   editMode       : false,
   anLoggedIn     : false,
   anData         : [],
+  notifications  : { my_tasks: 0, assign_tasks: 0 },  // live bell counts
+  notifUnsubscribe: null,  // Firestore onSnapshot unsubscriber
 };
 
 /* ════════════════════════════════════════════════════
@@ -896,6 +923,41 @@ async function fsSaveTasks(tasks, empNumber, empName, isGeneral, managerName, de
       });
     });
     await batch.commit();
+
+    /* ── Send bell notifications ── */
+    const firstTitle = tasks[0] ? tasks[0].taskDescription : "";
+    const fromName   = S.user ? S.user.name : "";
+    if (isGeneral) {
+      /* General task: notify ALL employees in same dept under this manager */
+      try {
+        const empSnap = await db.collection("users")
+          .where("managerEmpNumber", "==", S.user.employmentNumber)
+          .where("department", "==", dept)
+          .get();
+        const notifBatch = db.batch();
+        empSnap.forEach(function(edoc) {
+          const edata = edoc.data();
+          if (edata.employmentNumber !== S.user.employmentNumber) {
+            const nref = db.collection("notifications").doc();
+            notifBatch.set(nref, {
+              toEmpNumber: edata.employmentNumber,
+              section    : "my_tasks",
+              type       : "task_assigned_general",
+              taskTitle  : firstTitle.substring(0, 80),
+              fromName   : fromName,
+              projectId  : S.user ? (S.user.projectName || "") : "",
+              read       : false,
+              createdAt  : firebase.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        });
+        await notifBatch.commit();
+      } catch(ne) { console.warn("Notif general:", ne); }
+    } else {
+      /* Personal task: notify the assigned employee */
+      await fsWriteNotification(empNumber, "my_tasks", "task_assigned", firstTitle, fromName);
+    }
+
     return true;
   } catch (e) { console.error(e); return false; }
 }
@@ -904,6 +966,9 @@ async function fsCompleteTask(taskId, status, comments) {
   if (!FB_OK) return false;
   try {
     const now = new Date();
+    /* Get task data first so we can notify the manager */
+    const taskDoc = await db.collection("tasks").doc(taskId).get();
+    const taskData = taskDoc.exists ? taskDoc.data() : {};
     await db.collection("tasks").doc(taskId).update({
       status,
       employeeComments : comments || "",
@@ -911,8 +976,106 @@ async function fsCompleteTask(taskId, status, comments) {
       completedTime    : fmtTime(now),
       completedAt      : firebase.firestore.FieldValue.serverTimestamp(),
     });
+    /* Notify the manager (assignedByEmpNumber) that this task is done */
+    const managerEmpNum = taskData.assignedByEmpNumber || taskData.managerEmpNumber;
+    if (managerEmpNum && managerEmpNum !== (S.user && S.user.employmentNumber)) {
+      await fsWriteNotification(
+        managerEmpNum,
+        "assign_tasks",
+        "task_completed",
+        taskData.taskDescription || "",
+        S.user ? S.user.name : ""
+      );
+    }
     return true;
   } catch (e) { console.error(e); return false; }
+}
+
+/* ════════════════════════════════════════════════════
+   NOTIFICATION HELPERS — live bell icons
+   ════════════════════════════════════════════════════ */
+
+/* Write one notification to Firestore */
+async function fsWriteNotification(toEmpNumber, section, type, taskTitle, fromName) {
+  if (!FB_OK || !toEmpNumber) return;
+  try {
+    await db.collection("notifications").add({
+      toEmpNumber : toEmpNumber,
+      section     : section,       // "my_tasks" | "assign_tasks"
+      type        : type,          // "task_assigned" | "task_assigned_general" | "task_completed"
+      taskTitle   : (taskTitle || "").substring(0, 80),
+      fromName    : fromName || "",
+      projectId   : S.user ? (S.user.projectName || "") : "",
+      read        : false,
+      createdAt   : firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch(e) { console.warn("Notif write:", e); }
+}
+
+/* Start real-time listener for current user's unread notifications */
+function setupNotificationListener() {
+  if (!FB_OK || !S.user) return;
+  if (S.notifUnsubscribe) { try { S.notifUnsubscribe(); } catch(e){} }
+  try {
+    S.notifUnsubscribe = db.collection("notifications")
+      .where("toEmpNumber", "==", S.user.employmentNumber)
+      .where("read", "==", false)
+      .onSnapshot(function(snap) {
+        var myCount = 0, assignCount = 0;
+        snap.forEach(function(doc) {
+          var d = doc.data();
+          if (d.section === "my_tasks")     myCount++;
+          if (d.section === "assign_tasks") assignCount++;
+        });
+        S.notifications.my_tasks    = myCount;
+        S.notifications.assign_tasks = assignCount;
+        updateBellIcons();
+      }, function(err) { console.warn("Notif listener:", err); });
+  } catch(e) { console.warn("Notif setup:", e); }
+}
+
+/* Update bell icons on whatever screen is showing */
+function updateBellIcons() {
+  var myCount    = S.notifications.my_tasks;
+  var assignCount = S.notifications.assign_tasks;
+  var total      = myCount + assignCount;
+
+  /* Home screen bells */
+  var bellMy     = document.getElementById("dtm-bell-my");
+  var bellAssign = document.getElementById("dtm-bell-assign");
+  var bellMyBadge    = document.getElementById("dtm-bell-my-badge");
+  var bellAssignBadge = document.getElementById("dtm-bell-assign-badge");
+
+  if (bellMy) {
+    bellMy.style.display    = myCount > 0 ? "inline-flex" : "none";
+    if (bellMyBadge) bellMyBadge.textContent = myCount > 9 ? "9+" : myCount;
+  }
+  if (bellAssign) {
+    bellAssign.style.display = assignCount > 0 ? "inline-flex" : "none";
+    if (bellAssignBadge) bellAssignBadge.textContent = assignCount > 9 ? "9+" : assignCount;
+  }
+
+  /* Header DTM bell */
+  var hdrBell  = document.getElementById("dtm-hdr-bell");
+  var hdrBadge = document.getElementById("dtm-hdr-badge");
+  if (hdrBell)  hdrBell.style.display  = total > 0 ? "inline-flex" : "none";
+  if (hdrBadge) hdrBadge.textContent   = total > 9 ? "9+" : total;
+}
+
+/* Mark all unread notifications for this section as read */
+async function markNotificationsRead(section) {
+  if (!FB_OK || !S.user) return;
+  try {
+    var snap = await db.collection("notifications")
+      .where("toEmpNumber", "==", S.user.employmentNumber)
+      .where("section", "==", section)
+      .where("read", "==", false)
+      .get();
+    if (snap.empty) return;
+    var batch = db.batch();
+    snap.forEach(function(doc) { batch.update(doc.ref, { read: true }); });
+    await batch.commit();
+  } catch(e) { console.warn("markRead:", e); }
 }
 
 async function fsGetAnalytics(managerName) {
@@ -1292,6 +1455,7 @@ async function loadFirebaseAndInit() {
             }
             localStorage.setItem("dtm_user_v1", JSON.stringify(S.user));
             if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
+            setupNotificationListener();
             renderApp();
           } else {
             clearAllLocalData();
@@ -2021,7 +2185,13 @@ function renderApp() {
           <div class="hs-project">${projectName} &nbsp;&middot;&nbsp; ${companyName}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
-          <div class="hs-avatar" onclick="editProfile()" title="Edit profile" style="display:flex;align-items:center;justify-content:center;">${avatarInner}</div>
+          <div style="position:relative;display:inline-block;">
+            <div class="hs-avatar" onclick="editProfile()" title="Edit profile" style="display:flex;align-items:center;justify-content:center;">${avatarInner}</div>
+            <span id="dtm-hdr-bell" class="dtm-hdr-bell-wrap" style="display:none;position:absolute;top:-6px;right:-8px;" title="You have notifications">
+              <i class="ti ti-bell" aria-hidden="true"></i>
+              <span class="dtm-hdr-bell-badge" id="dtm-hdr-badge"></span>
+            </span>
+          </div>
           <button onclick="doLogout()" title="Sign out" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.4);border-radius:20px;color:#fff;font-size:11px;font-weight:700;padding:5px 12px;cursor:pointer;letter-spacing:.5px;width:100%;justify-content:center;" onmouseover="this.style.background='rgba(239,68,68,0.8)';this.style.borderColor='#ef4444'" onmouseout="this.style.background='rgba(255,255,255,0.15)';this.style.borderColor='rgba(255,255,255,0.4)'">
             &#x23CF;&nbsp;LOG OUT
           </button>
@@ -2066,7 +2236,13 @@ function renderApp() {
           <span class="hs-card-num">01</span>
         </div>
         <div class="hs-card-right">
-          <div class="hs-card-title">My Tasks</div>
+          <div class="hs-card-title" style="display:flex;align-items:center;">
+            My Tasks
+            <span id="dtm-bell-my" class="dtm-bell-wrap" style="display:none;" title="New tasks assigned to you">
+              <i class="ti ti-bell" aria-hidden="true"></i>
+              <span class="dtm-bell-badge" id="dtm-bell-my-badge"></span>
+            </span>
+          </div>
           <div class="hs-card-desc">Tasks assigned to me by my manager</div>
         </div>
         <div class="hs-card-arrow" style="background:#E1F5EE;">
@@ -2081,7 +2257,13 @@ function renderApp() {
           <span class="hs-card-num">02</span>
         </div>
         <div class="hs-card-right">
-          <div class="hs-card-title">Assign Tasks</div>
+          <div class="hs-card-title" style="display:flex;align-items:center;">
+            Assign Tasks
+            <span id="dtm-bell-assign" class="dtm-bell-wrap" style="display:none;" title="Team member completed a task">
+              <i class="ti ti-bell" aria-hidden="true"></i>
+              <span class="dtm-bell-badge" id="dtm-bell-assign-badge"></span>
+            </span>
+          </div>
           <div class="hs-card-desc">Assign tasks to my subordinates</div>
         </div>
         <div class="hs-card-arrow" style="background:#e6f1fb;">
@@ -2109,6 +2291,8 @@ function renderApp() {
     </div>`;
 
   loadHomeStats();
+  /* Refresh bell icons with current notification counts */
+  setTimeout(updateBellIcons, 50);
 }
 
 /* Load Overall Summary — My Tasks + Team Tasks */
@@ -2348,6 +2532,7 @@ function editProfile() {
    ════════════════════════════════════════════════════ */
 function goToMyTasks() {
   S.selEmp = null; S.editMode = false; S.newTasks = [];
+  markNotificationsRead("my_tasks");
   document.getElementById("app").innerHTML = `
     <div class="tt-hdr">
       <div class="tt-hdr-row">
@@ -2383,6 +2568,7 @@ function goToMyTasks() {
 
 function goToAssignTasks() {
   S.selEmp = null; S.editMode = false; S.newTasks = []; S.uploadUnlocked = false;
+  markNotificationsRead("assign_tasks");
   document.getElementById("app").innerHTML = `
     <div class="at-hdr">
       <div class="at-hdr-row">
@@ -3163,7 +3349,31 @@ function addToStaged() {
   });
   closeOverlay();
   drawTaskTable(document.getElementById("tbl-body"));
-  toast("Task added. Add more or press Save & Upload.");
+  toast("Task added ✓");
+  showFloatSaveBar();
+}
+
+/* ── Floating Save Bar (Option A) ── */
+function showFloatSaveBar() {
+  /* Remove old bar if any */
+  var old = document.getElementById("dtm-float-bar");
+  if (old) old.remove();
+  var bar = document.createElement("div");
+  bar.id = "dtm-float-bar";
+  bar.className = "dtm-float-bar";
+  bar.innerHTML = `
+    <div class="dtm-float-bar-msg">
+      Ready to save?
+      <span>${S.newTasks.length} task${S.newTasks.length !== 1 ? "s" : ""} staged — tap Save &amp; Upload to confirm</span>
+    </div>
+    <button class="dtm-float-btn-edit" onclick="hideFloatSaveBar()">Keep Editing</button>
+    <button class="dtm-float-btn-save" onclick="doSaveUpload()">&#128190; Save &amp; Upload</button>`;
+  document.body.appendChild(bar);
+}
+
+function hideFloatSaveBar() {
+  var bar = document.getElementById("dtm-float-bar");
+  if (bar) bar.remove();
 }
 
 async function doSaveUpload() {
@@ -3185,6 +3395,7 @@ async function doSaveUpload() {
 
   if (ok) {
     S.newTasks = []; S.editMode = false;
+    hideFloatSaveBar();
     toast("Tasks uploaded successfully ✓");
     await refreshTaskTbl();
   } else {
@@ -3630,22 +3841,24 @@ function anPrint(empNum) {
         </div>
       </div>
     </div>
-    <div class="sec"><div class="sec-title">Task Details (${d.total} tasks)</div>
-      <table><thead><tr><th>Task Description</th><th style="width:110px">Assigned Date</th><th style="width:80px">Status</th></tr></thead>
-      <tbody>${taskRows}</tbody></table>
+    <div class="sec"><div class="sec-title">Task Record</div>
+      <table><thead><tr><th>Task</th><th>Assigned</th><th>Status</th></tr></thead>
+      <tbody>${taskRows||'<tr><td colspan=3 style=text-align:center;color:#94a3b8>No tasks</td></tr>'}</tbody></table>
     </div>
-    <div class="sec"><div class="sec-title">Manager Recommendation</div>
-      <div class="rec-box"><strong style="color:${g.bar}">${esc(rec)}</strong><br><span style="font-size:11px;color:#374151;margin-top:6px;display:block">${esc(note)}</span></div>
+    <div class="rec-box">
+      <div style="font-size:11px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Manager Recommendation</div>
+      <div style="font-size:14px;font-weight:800;color:#0f172a">${rec}</div>
+      ${note&&note!='No additional comments.'?`<div style="font-size:12px;color:#334155;margin-top:4px">${esc(note)}</div>`:''}
     </div>
     <div class="sig-row">
-      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-weight:700;font-size:11px">${esc(S.user?.name||'Manager')}</div></div>
-      <div class="sig-box"><div class="sig-lbl">HR Department</div><div class="sig-space"></div><div class="sig-lbl">Authorized Signature</div></div>
-      <div class="sig-box"><div class="sig-lbl">Employee Acknowledgement</div><div class="sig-space"></div><div class="sig-lbl">Employee Signature</div></div>
+      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-size:11px;font-weight:700">${esc(S.user?.name||'Manager')}</div></div>
+      <div class="sig-box"><div class="sig-lbl">Date</div><div class="sig-space"></div><div style="font-size:11px">${today}</div></div>
+      <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div><div style="font-size:11px">&nbsp;</div></div>
     </div>
-    <div class="footer">Daily Task Manager — Performance Evaluation · ${esc(S.project?.companyName||'IHCC')} · Confidential</div>
-  </div></body></html>`;
-  const w = window.open('','_blank','width=860,height=1100');
-  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>w.print(),600); }
+    <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
+  </div></body></html>\`;
+  const w = window.open('', '_blank', 'width=860,height=1100');
+  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
 }
 
 /* ══════════════════════════════════════════════════════
