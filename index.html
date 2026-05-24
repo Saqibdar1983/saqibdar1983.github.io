@@ -3856,7 +3856,7 @@ function anPrint(empNum) {
       <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div><div style="font-size:11px">&nbsp;</div></div>
     </div>
     <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
-  </div></body></html>\`;
+  </div></body></html>`;
   const w = window.open('', '_blank', 'width=860,height=1100');
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
 }
