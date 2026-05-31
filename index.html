@@ -895,14 +895,17 @@ async function fsGetTasksForEmp(empNumber, isGeneral, managerName, dept) {
 async function fsGetMyTasks() {
   if (!FB_OK || !S.user) return [];
   const u = S.user;
-  const [s1, s2] = await Promise.all([
+  /* s2: single-field query (no composite index needed) — filter isGeneral + dept in JS */
+  const [s1, s2raw] = await Promise.all([
     db.collection("tasks").where("assignedToEmpNumber", "==", u.employmentNumber).where("isGeneral", "==", false).get(),
-    db.collection("tasks").where("isGeneral", "==", true).where("managerEmpNumber", "==", u.managerEmpNumber).where("department", "==", u.department).get(),
+    db.collection("tasks").where("managerEmpNumber", "==", u.managerEmpNumber).get(),
   ]);
-  /* General tasks: show if pending (no one claimed yet) OR claimed by ME */
-  const generalTasks = s2.docs
+  /* General tasks: same manager, same department, pending OR claimed by ME */
+  const generalTasks = s2raw.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(t => {
+      if (!t.isGeneral) return false;
+      if (t.department !== u.department) return false;
       if (t.status === "pending" || t.status === "returned") return true;
       return t.claimedByEmpNumber === u.employmentNumber;
     });
