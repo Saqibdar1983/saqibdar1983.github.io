@@ -130,6 +130,7 @@
     .b-pend { background: #fff3cd; color: #7d5800; border: 1px solid #e6c200; }
     .b-done { background: #d4edda; color: #155724; border: 1px solid #28a745; }
     .b-gen  { background: #cce5ff; color: #004085; border: 1px solid #0066cc; margin-left: 4px; }
+    .b-returned { background: #fff3e0; color: #7d3b00; border: 1px solid #f59e0b; }
 
     /* ── PAGE HEADER (back nav) ── */
     .pg-hdr { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #e0e0e0; gap: 9px; background: #fafafa; }
@@ -319,6 +320,10 @@
     .tc-btn-done:hover { background: #085041; }
     .tc-btn-cmt  { background: #1f2937; color: #fff; }
     .tc-btn-cmt:hover { background: #111827; }
+    .tc-btn-return { background: #b45309; color: #fff; }
+    .tc-btn-return:hover { background: #92400e; }
+    .tc-btn-reassign { background: #185FA5; color: #fff; }
+    .tc-btn-reassign:hover { background: #0c447c; }
     .tt-save-strip { padding: 12px; background: #f3f4f6; border-top: 1px solid #e5e7eb; }
     .tt-save-btn { width: 100%; padding: 13px; background: #0F6E56; color: #fff; border: none; border-radius: 7px; font-size: 14px; font-weight: bold; cursor: pointer; letter-spacing: .3px; }
     .tt-save-btn:hover { background: #085041; }
@@ -894,9 +899,16 @@ async function fsGetMyTasks() {
     db.collection("tasks").where("assignedToEmpNumber", "==", u.employmentNumber).where("isGeneral", "==", false).get(),
     db.collection("tasks").where("isGeneral", "==", true).where("managerName", "==", u.managerName).where("department", "==", u.department).get(),
   ]);
+  /* General tasks: show if pending (no one claimed yet) OR claimed by ME */
+  const generalTasks = s2.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(t => {
+      if (t.status === "pending" || t.status === "returned") return true;
+      return t.claimedByEmpNumber === u.employmentNumber;
+    });
   const all = [
     ...s1.docs.map(d => ({ id: d.id, ...d.data() })),
-    ...s2.docs.map(d => ({ id: d.id, ...d.data() })),
+    ...generalTasks,
   ];
   all.sort((a, b) => (a.srNumber || 0) - (b.srNumber || 0));
   return all;
@@ -969,13 +981,19 @@ async function fsCompleteTask(taskId, status, comments) {
     /* Get task data first so we can notify the manager */
     const taskDoc = await db.collection("tasks").doc(taskId).get();
     const taskData = taskDoc.exists ? taskDoc.data() : {};
-    await db.collection("tasks").doc(taskId).update({
+    const updateData = {
       status,
       employeeComments : comments || "",
       completedDate    : fmtDate(now),
       completedTime    : fmtTime(now),
       completedAt      : firebase.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    /* For general tasks — record who claimed/completed it */
+    if (taskData.isGeneral && S.user) {
+      updateData.claimedByEmpNumber = S.user.employmentNumber;
+      updateData.claimedByName      = S.user.name;
+    }
+    await db.collection("tasks").doc(taskId).update(updateData);
     /* Notify the manager (assignedByEmpNumber) that this task is done */
     const managerEmpNum = taskData.assignedByEmpNumber || taskData.managerEmpNumber;
     if (managerEmpNum && managerEmpNum !== (S.user && S.user.employmentNumber)) {
@@ -2686,18 +2704,41 @@ async function loadMyTasks() {
   const done     = S.myTasks.filter(t => t.status !== "pending");
 
   function taskRow(t) {
-    const isDone   = t.status !== "pending";
+    const isReturned = t.status === "returned";
+    const isDone   = t.status !== "pending" && !isReturned;
     const isDoneC  = t.status === "completed_with_comments";
-    const isOverdue = !isDone && t.targetCompletionDate && t.targetCompletionDate < today;
-    const barClass = isDone ? "bar-done" : (isOverdue ? "bar-over" : "bar-pend");
-    const badge    = isDone
-      ? `<span class="badge b-done">${isDoneC ? "Done + Comment" : "Done"}</span>`
-      : (isOverdue
-          ? `<span class="badge" style="background:#fde8e8;color:#7a1c1c;border:1px solid #e57373;">Overdue</span>`
-          : `<span class="badge b-pend">Pending</span>`);
+    const isOverdue = !isDone && !isReturned && t.targetCompletionDate && t.targetCompletionDate < today;
+    const barClass = isReturned ? "bar-over" : (isDone ? "bar-done" : (isOverdue ? "bar-over" : "bar-pend"));
+    const badge    = isReturned
+      ? `<span class="badge b-returned">↩ Returned by ${esc(t.returnedByName||"Team")}</span>`
+      : (isDone
+          ? `<span class="badge b-done">${isDoneC ? "Done + Comment" : "Done"}</span>`
+          : (isOverdue
+              ? `<span class="badge" style="background:#fde8e8;color:#7a1c1c;border:1px solid #e57373;">Overdue</span>`
+              : `<span class="badge b-pend">Pending</span>`));
     const genTag   = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
+    const returnedNote = isReturned && t.returnedComments
+      ? `<div style="margin-top:5px;font-size:11px;color:#7d3b00;background:#fff8f0;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:3px;"><b>Reason:</b> ${esc(t.returnedComments)}</div>`
+      : "";
 
-    return `<div class="mt-row${isDone ? ' mt-row-done' : ''}">
+    /* Buttons — differ based on status and who is viewing */
+    let actionBtns = "";
+    if (isReturned) {
+      /* Manager sees Reassign button */
+      actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
+        <button class="tc-btn tc-btn-reassign btn-sm" onclick="doReassign('${t.id}')" title="Send back to employee">↺ Reassign</button>`;
+    } else if (isDone) {
+      actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
+        <button class="tick-btn done" disabled title="Completed">✓</button>
+        <button class="tick-btn done-c" disabled>✓+</button>`;
+    } else {
+      actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
+        <button class="tick-btn" onclick="doComplete('${t.id}','completed')" title="Mark Done">✓</button>
+        <button class="tick-btn" onclick="doCompleteComment('${t.id}')" title="Done with Comments">✓+</button>
+        <button class="tc-btn tc-btn-return btn-sm" onclick="doReturnTask('${t.id}')" title="Return Task to Manager">↩ Return</button>`;
+    }
+
+    return `<div class="mt-row${isDone ? ' mt-row-done' : ''}${isReturned ? ' mt-row-done' : ''}">
       <div class="mt-row-bar ${barClass}"></div>
       <div class="mt-row-body">
         <div class="mt-row-title">#${t.srNumber} &nbsp;${esc(t.taskDescription)}${genTag}</div>
@@ -2707,12 +2748,9 @@ async function loadMyTasks() {
           ${t.building ? `<span><i class="ti ti-building"></i>${esc(t.building)}${t.floor ? ", F-"+esc(t.floor) : ""}</span>` : ""}
           <span>${badge}</span>
         </div>
+        ${returnedNote}
       </div>
-      <div class="mt-row-acts">
-        <button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
-        <button class="tick-btn ${isDone ? 'done' : ''}" ${isDone ? 'disabled title="Completed"' : `onclick="doComplete('${t.id}','completed')" title="Mark Done"`}>✓</button>
-        <button class="tick-btn ${isDoneC ? 'done-c' : ''}" ${isDone ? 'disabled' : `onclick="doCompleteComment('${t.id}')" title="Done with Comments"`}>✓+</button>
-      </div>
+      <div class="mt-row-acts">${actionBtns}</div>
     </div>`;
   }
 
@@ -2751,6 +2789,101 @@ async function submitComment(taskId) {
   const ok = await fsCompleteTask(taskId, "completed_with_comments", cmt);
   toast(ok ? "Task completed with comments ✓" : "Error — check connection");
   if (ok) await loadMyTasks();
+}
+
+/* ── Return Task ── */
+function doReturnTask(taskId) {
+  showOverlay(modal("Return Task to Manager",
+    `<div style="background:#fff8f0;border:1px solid #f59e0b;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#7d3b00;">
+       <b>↩ Returning this task</b> — the task will go to your manager's screen with your reason. They will arrange the remaining work and send it back to you.
+     </div>
+     <div class="form-group">
+       <label class="form-label">Reason for returning *</label>
+       <textarea class="form-input" id="return-txt" rows="4" placeholder="e.g. Civil work not finished, area not ready. Duct sleeves missing on floor 3..."></textarea>
+     </div>`,
+    `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>
+     <button class="btn" style="background:#b45309;color:#fff;" onclick="submitReturnTask('${taskId}')">↩ Return Task</button>`
+  ));
+  setTimeout(() => document.getElementById("return-txt")?.focus(), 80);
+}
+
+async function submitReturnTask(taskId) {
+  const cmt = (document.getElementById("return-txt")?.value || "").trim();
+  if (!cmt) { toast("Please write the reason for returning"); return; }
+  closeOverlay();
+  const ok = await fsReturnTask(taskId, cmt);
+  toast(ok ? "Task returned to manager ✓" : "Error — check connection");
+  if (ok) await loadMyTasks();
+}
+
+async function fsReturnTask(taskId, comments) {
+  if (!FB_OK || !S.user) return false;
+  try {
+    const taskDoc = await db.collection("tasks").doc(taskId).get();
+    if (!taskDoc.exists) return false;
+    const taskData = taskDoc.data();
+    const now = new Date();
+    await db.collection("tasks").doc(taskId).update({
+      status                    : "returned",
+      returnedByEmpNumber       : S.user.employmentNumber,
+      returnedByName            : S.user.name,
+      returnedComments          : comments,
+      returnedAt                : firebase.firestore.FieldValue.serverTimestamp(),
+      /* Move task to manager's My Tasks */
+      originalAssignedToEmpNumber: taskData.assignedToEmpNumber,
+      originalAssignedToName    : taskData.assignedToName,
+      originalIsGeneral         : taskData.isGeneral,
+      assignedToEmpNumber       : taskData.managerEmpNumber || taskData.assignedByEmpNumber,
+      assignedToName            : taskData.assignedByName || "Manager",
+      isGeneral                 : false,
+    });
+    /* Notify manager */
+    await fsWriteNotification(
+      taskData.managerEmpNumber || taskData.assignedByEmpNumber,
+      "my_tasks",
+      "task_returned",
+      taskData.taskDescription || "",
+      S.user.name
+    );
+    return true;
+  } catch(e) { console.error(e); return false; }
+}
+
+/* ── Reassign returned task back to employee ── */
+async function doReassign(taskId) {
+  const t = S.myTasks.find(x => x.id === taskId);
+  if (!t) return;
+  const empName = t.originalAssignedToName || "employee";
+  if (!confirm(`Reassign this task back to ${empName}?`)) return;
+  const ok = await fsReassignTask(taskId);
+  toast(ok ? `Task reassigned to ${empName} ✓` : "Error — check connection");
+  if (ok) await loadMyTasks();
+}
+
+async function fsReassignTask(taskId) {
+  if (!FB_OK || !S.user) return false;
+  try {
+    const taskDoc = await db.collection("tasks").doc(taskId).get();
+    if (!taskDoc.exists) return false;
+    const taskData = taskDoc.data();
+    await db.collection("tasks").doc(taskId).update({
+      status              : "pending",
+      assignedToEmpNumber : taskData.originalAssignedToEmpNumber,
+      assignedToName      : taskData.originalAssignedToName,
+      isGeneral           : taskData.originalIsGeneral || false,
+      reassignedAt        : firebase.firestore.FieldValue.serverTimestamp(),
+      reassignedByName    : S.user.name,
+    });
+    /* Notify the employee that task is back */
+    await fsWriteNotification(
+      taskData.originalAssignedToEmpNumber,
+      "my_tasks",
+      "task_assigned",
+      taskData.taskDescription || "",
+      S.user.name
+    );
+    return true;
+  } catch(e) { console.error(e); return false; }
 }
 
 function viewTaskDetail(taskId) {
@@ -3792,6 +3925,7 @@ function anPrint(empNum) {
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Performance Report — ${esc(emp.name)}</title>
   <style>
     body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:0}
     @page{size:A4;margin:18mm 16mm}
     .hdr{background:#0f172a;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
     .hdr-title{font-size:18px;font-weight:800}.hdr-sub{font-size:11px;opacity:.7;margin-top:3px}.hdr-right{font-size:11px;text-align:right;opacity:.8}
@@ -3807,8 +3941,7 @@ function anPrint(empNum) {
     .eff-bar{background:#e2e8f0;border-radius:4px;height:7px;margin-top:6px}.eff-fill{background:${g.bar};height:7px;border-radius:4px;width:${d.efficiency}%}
     table{width:100%;border-collapse:collapse;font-size:11px}
     thead th{background:#0f172a;color:#fff;padding:6px 8px;text-align:left;font-size:10px}
-    tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0;font-size:11px}
-    tbody tr:nth-child(even) td{background:#f8fafc}
+    tbody td{padding:5px 8px;border-bottom:.5px solid #e2e8f0}
     .rec-box{border:1.5px solid ${g.bar};border-radius:6px;padding:12px;margin:8px 0}
     .sig-row{display:flex;gap:16px;margin-top:18px}
     .sig-box{flex:1;border-top:1.5px solid #0f172a;padding-top:6px}
@@ -3821,39 +3954,40 @@ function anPrint(empNum) {
       <div class="info-grid">
         <div class="inf"><span class="inf-l">Name</span><span class="inf-v">${esc(emp.name||'—')}</span></div>
         <div class="inf"><span class="inf-l">Emp. Number</span><span class="inf-v">${esc(emp.employmentNumber||'—')}</span></div>
-        <div class="inf"><span class="inf-l">Position</span><span class="inf-v">${esc(emp.designation||emp.position||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Position</span><span class="inf-v">${esc(emp.designation||'—')}</span></div>
         <div class="inf"><span class="inf-l">Department</span><span class="inf-v">${esc(emp.department||'—')}</span></div>
-        <div class="inf"><span class="inf-l">Email</span><span class="inf-v">${esc(emp.email||'—')}</span></div>
+        <div class="inf"><span class="inf-l">Manager</span><span class="inf-v">${esc(S.user?.name||'—')}</span></div>
         <div class="inf"><span class="inf-l">Report Date</span><span class="inf-v">${today}</span></div>
       </div>
     </div>
     <div class="sec"><div class="sec-title">Performance Summary</div>
       <div class="stat-row">
         <div class="stat-box"><div class="stat-n">${d.total}</div><div class="stat-l">Total Tasks</div></div>
-        <div class="stat-box"><div class="stat-n">${d.done}</div><div class="stat-l">Completed</div></div>
-        <div class="stat-box"><div class="stat-n">${d.total-d.done}</div><div class="stat-l">Pending</div></div>
+        <div class="stat-box"><div class="stat-n">${d.completed}</div><div class="stat-l">Completed</div></div>
+        <div class="stat-box"><div class="stat-n">${d.pending}</div><div class="stat-l">Pending</div></div>
         <div class="stat-box"><div class="stat-n">${d.efficiency}%</div><div class="stat-l">Efficiency</div></div>
       </div>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
-        <div><div style="font-size:15px;font-weight:800;color:${g.txt}">${g.label}</div><div style="font-size:11px;color:#64748b;margin-top:4px">${d.efficiency}% task completion rate</div>
+        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
           <div class="eff-bar"><div class="eff-fill"></div></div>
         </div>
       </div>
     </div>
     <div class="sec"><div class="sec-title">Task Record</div>
       <table><thead><tr><th>Task</th><th>Assigned</th><th>Status</th></tr></thead>
-      <tbody>${taskRows||'<tr><td colspan=3 style=text-align:center;color:#94a3b8>No tasks</td></tr>'}</tbody></table>
+      <tbody>${taskRows}</tbody></table>
     </div>
     <div class="rec-box">
-      <div style="font-size:11px;font-weight:700;color:#0F6E56;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Manager Recommendation</div>
-      <div style="font-size:14px;font-weight:800;color:#0f172a">${rec}</div>
-      ${note&&note!='No additional comments.'?`<div style="font-size:12px;color:#334155;margin-top:4px">${esc(note)}</div>`:''}
+      <div style="font-size:11px;font-weight:700;color:#0F6E56;margin-bottom:4px">Manager Recommendation</div>
+      <div style="font-size:13px;font-weight:800">${rec}</div>
+      ${note&&note!='No additional comments.'?`<div style="font-size:11px;color:#334155;margin-top:4px">${esc(note)}</div>`:''}
     </div>
     <div class="sig-row">
       <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-size:11px;font-weight:700">${esc(S.user?.name||'Manager')}</div></div>
       <div class="sig-box"><div class="sig-lbl">Date</div><div class="sig-space"></div><div style="font-size:11px">${today}</div></div>
-      <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div><div style="font-size:11px">&nbsp;</div></div>
+      <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div></div>
     </div>
     <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
   </div></body></html>`;
