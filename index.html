@@ -2230,10 +2230,11 @@ function renderApp() {
         </button>
       </div>
       <div class="hs-stats-row">
-        <div class="hs-stat-box">
+        <div class="hs-stat-box ats-stat-box-click" onclick="showMyTasksSummary()" title="Tap to view breakdown">
           <div class="hs-stat-n" id="hs-my-total" style="color:#0F6E56;">—</div>
           <div class="hs-stat-l">My Tasks</div>
           <div class="hs-stat-sub"><span id="hs-my-done">—</span> done &nbsp;·&nbsp; <span id="hs-my-pend" style="color:#e6a817;">—</span> pending</div>
+          <div style="font-size:9px;color:#0F6E56;margin-top:4px;font-weight:600;">▶ TAP FOR SUMMARY</div>
         </div>
         <div class="hs-stat-box ats-stat-box-click" onclick="showAssignedTasksSummary()" title="Tap to view full summary">
           <div class="hs-stat-n" id="hs-team-total" style="color:#0F6E56;">—</div>
@@ -2356,6 +2357,87 @@ async function loadHomeStats() {
 }
 /* Alias for backward compat */
 function loadTeamStats() { loadHomeStats(); }
+
+/* ════════════════════════════════════════════════════
+   MY TASKS SUMMARY — tapping the "My Tasks" stat box
+   ════════════════════════════════════════════════════ */
+async function showMyTasksSummary() {
+  /* Show loading immediately */
+  showOverlay(`<div class="modal-wide">
+    <div class="ats-hdr">
+      <div class="ats-hdr-title">&#128203; My Tasks Summary</div>
+      <button style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;" onclick="closeOverlay()">&#215;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:40px;color:#64748b;">Loading...</div>
+  </div>`);
+
+  /* Fetch all my tasks */
+  let tasks = [];
+  try {
+    tasks = FB_OK ? await fsGetMyTasks() : (S.myTasks || []);
+  } catch(e) { tasks = S.myTasks || []; }
+
+  /* Break down by type */
+  const generalTasks  = tasks.filter(t => t.isGeneral);
+  const personalTasks = tasks.filter(t => !t.isGeneral && t.status !== "returned");
+  const returnedTasks = tasks.filter(t => t.status === "returned");
+
+  const genPend  = generalTasks.filter(t => t.status === "pending").length;
+  const genDone  = generalTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+  const perPend  = personalTasks.filter(t => t.status === "pending").length;
+  const perDone  = personalTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+  const retCount = returnedTasks.length;
+
+  const row = (label, pend, done, color) => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid #f1f5f9;">
+      <div style="font-size:13px;font-weight:600;color:#0f172a;">${label}</div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <span style="font-size:11px;color:#64748b;">${pend} pending</span>
+        <span style="font-size:11px;color:#0F6E56;">${done} done</span>
+        <span style="font-size:18px;font-weight:700;color:${color};min-width:28px;text-align:right;">${pend + done}</span>
+      </div>
+    </div>`;
+
+  const retRow = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid #f1f5f9;">
+      <div style="font-size:13px;font-weight:600;color:#0f172a;">&#8617; Returned</div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <span style="font-size:11px;color:#b45309;">${retCount} awaiting reassign</span>
+        <span style="font-size:18px;font-weight:700;color:${retCount > 0 ? '#b45309' : '#94a3b8'};min-width:28px;text-align:right;">${retCount}</span>
+      </div>
+    </div>`;
+
+  const html = `<div class="modal-wide">
+    <div class="ats-hdr">
+      <div class="ats-hdr-title">&#128203; My Tasks Summary</div>
+      <button style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;" onclick="closeOverlay()">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+        <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Breakdown</div>
+        ${row("General Tasks", genPend, genDone, "#185FA5")}
+        ${row("My Tasks (Personal)", perPend, perDone, "#0F6E56")}
+        ${retRow}
+      </div>
+      <div style="background:#0F6E56;border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Total</div>
+          <div style="font-size:22px;font-weight:700;color:#fff;">${tasks.length} Tasks</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:13px;color:rgba(255,255,255,0.85);">${perDone + genDone} completed</div>
+          <div style="font-size:13px;color:#fbbf24;">${perPend + genPend} pending</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;text-align:center;margin-bottom:10px;">For task details, open the My Tasks section below</div>
+      <button onclick="closeOverlay();goToMyTasks();" style="width:100%;padding:11px;background:#0f172a;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.3px;">
+        Open My Tasks &rarr;
+      </button>
+    </div>
+  </div>`;
+
+  showOverlay(html);
+}
 
 /* ════════════════════════════════════════════════════
    ASSIGNED TASKS SUMMARY — Design A
