@@ -2330,34 +2330,22 @@ async function loadHomeStats() {
     return;
   }
   try {
-    const u   = S.user;
-    const myEmp = u.employmentNumber;
-    /* Fetch personal tasks + general tasks (by managerEmpNumber, filter in JS) + team tasks */
-    const [personalSnap, allMgrSnap, teamSnap] = await Promise.all([
-      db.collection("tasks").where("assignedToEmpNumber", "==", myEmp).get(),
-      db.collection("tasks").where("managerEmpNumber", "==", u.managerEmpNumber).get(),
+    const myEmp = S.user.employmentNumber;
+
+    /* Use fsGetMyTasks() — already proven to work for both personal + general tasks */
+    const [allMyTasks, teamSnap] = await Promise.all([
+      fsGetMyTasks(),
       db.collection("tasks").where("assignedByEmpNumber", "==", myEmp).get(),
     ]);
 
-    /* Personal tasks (not general, not returned-to-me) */
-    const personalTasks = personalSnap.docs.map(d => d.data())
-      .filter(t => !t.isGeneral);
-
-    /* General tasks for my dept — pending OR claimed by me */
-    const generalTasks = allMgrSnap.docs.map(d => d.data())
-      .filter(t => {
-        if (!t.isGeneral) return false;
-        if (t.department !== u.department) return false;
-        if (t.status === "pending") return true;
-        return t.claimedByEmpNumber === myEmp;
-      });
-
-    const allMyTasks = [...personalTasks, ...generalTasks];
-    const myDone = allMyTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+    const isDone = t => t.status === "completed" || t.status === "completed_with_comments";
+    const generalTasks  = allMyTasks.filter(t => t.isGeneral);
+    const personalTasks = allMyTasks.filter(t => !t.isGeneral && t.status !== "returned");
+    const myDone = allMyTasks.filter(isDone).length;
     const myPend = allMyTasks.filter(t => t.status === "pending").length;
 
     const teamTasks = teamSnap.docs.map(d => d.data());
-    const tmDone    = teamTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+    const tmDone    = teamTasks.filter(isDone).length;
     const tmPend    = teamTasks.length - tmDone;
 
     set("hs-my-total",   allMyTasks.length);
@@ -2369,7 +2357,7 @@ async function loadHomeStats() {
     set("hs-team-done",  tmDone);
     set("hs-team-pend",  tmPend);
     set("hs-total-done", myDone + tmDone);
-  } catch(e) { console.error(e); }
+  } catch(e) { console.error("loadHomeStats:", e); }
 }
 /* Alias for backward compat */
 function loadTeamStats() { loadHomeStats(); }
