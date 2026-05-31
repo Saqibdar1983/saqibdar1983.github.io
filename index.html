@@ -2234,7 +2234,8 @@ function renderApp() {
           <div class="hs-stat-n" id="hs-my-total" style="color:#0F6E56;">—</div>
           <div class="hs-stat-l">My Tasks</div>
           <div class="hs-stat-sub"><span id="hs-my-done">—</span> done &nbsp;·&nbsp; <span id="hs-my-pend" style="color:#e6a817;">—</span> pending</div>
-          <div style="font-size:9px;color:#0F6E56;margin-top:4px;font-weight:600;">▶ TAP FOR SUMMARY</div>
+          <div style="font-size:9px;color:#185FA5;margin-top:3px;font-weight:600;">Gen <span id="hs-my-gen">—</span> &nbsp;·&nbsp; <span style="color:#0F6E56;">Per <span id="hs-my-per">—</span></span></div>
+          <div style="font-size:9px;color:#0F6E56;margin-top:2px;font-weight:600;">▶ TAP FOR SUMMARY</div>
         </div>
         <div class="hs-stat-box ats-stat-box-click" onclick="showAssignedTasksSummary()" title="Tap to view full summary">
           <div class="hs-stat-n" id="hs-team-total" style="color:#0F6E56;">—</div>
@@ -2322,33 +2323,48 @@ async function loadHomeStats() {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
   if (!FB_OK) {
-    /* Demo: My Tasks = 5 (2 done, 3 pending), Team = 30 (18 done, 12 pending) */
-    const myTotal=5, myDone=2, myPend=3;
-    const tmTotal=30, tmDone=18, tmPend=12;
-    set("hs-my-total",   myTotal);
-    set("hs-my-done",    myDone);
-    set("hs-my-pend",    myPend);
-    set("hs-team-total", tmTotal);
-    set("hs-team-done",  tmDone);
-    set("hs-team-pend",  tmPend);
-    set("hs-total-done", myDone + tmDone);
+    set("hs-my-total",   5);  set("hs-my-done",  2); set("hs-my-pend",  3);
+    set("hs-my-gen",     3);  set("hs-my-per",   2);
+    set("hs-team-total", 30); set("hs-team-done",18); set("hs-team-pend",12);
+    set("hs-total-done", 20);
     return;
   }
   try {
-    const myEmp = S.user.employmentNumber;
-    const [mySnap, teamSnap] = await Promise.all([
+    const u   = S.user;
+    const myEmp = u.employmentNumber;
+    /* Fetch personal tasks + general tasks (by managerEmpNumber, filter in JS) + team tasks */
+    const [personalSnap, allMgrSnap, teamSnap] = await Promise.all([
       db.collection("tasks").where("assignedToEmpNumber", "==", myEmp).get(),
+      db.collection("tasks").where("managerEmpNumber", "==", u.managerEmpNumber).get(),
       db.collection("tasks").where("assignedByEmpNumber", "==", myEmp).get(),
     ]);
-    const myTasks   = mySnap.docs.map(d => d.data());
+
+    /* Personal tasks (not general, not returned-to-me) */
+    const personalTasks = personalSnap.docs.map(d => d.data())
+      .filter(t => !t.isGeneral);
+
+    /* General tasks for my dept — pending OR claimed by me */
+    const generalTasks = allMgrSnap.docs.map(d => d.data())
+      .filter(t => {
+        if (!t.isGeneral) return false;
+        if (t.department !== u.department) return false;
+        if (t.status === "pending") return true;
+        return t.claimedByEmpNumber === myEmp;
+      });
+
+    const allMyTasks = [...personalTasks, ...generalTasks];
+    const myDone = allMyTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+    const myPend = allMyTasks.filter(t => t.status === "pending").length;
+
     const teamTasks = teamSnap.docs.map(d => d.data());
-    const myDone    = myTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
-    const myPend    = myTasks.length - myDone;
     const tmDone    = teamTasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
     const tmPend    = teamTasks.length - tmDone;
-    set("hs-my-total",   myTasks.length);
+
+    set("hs-my-total",   allMyTasks.length);
     set("hs-my-done",    myDone);
     set("hs-my-pend",    myPend);
+    set("hs-my-gen",     generalTasks.length);
+    set("hs-my-per",     personalTasks.length);
     set("hs-team-total", teamTasks.length);
     set("hs-team-done",  tmDone);
     set("hs-team-pend",  tmPend);
