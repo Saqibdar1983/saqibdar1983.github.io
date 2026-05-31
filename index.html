@@ -897,7 +897,7 @@ async function fsGetMyTasks() {
   const u = S.user;
   const [s1, s2] = await Promise.all([
     db.collection("tasks").where("assignedToEmpNumber", "==", u.employmentNumber).where("isGeneral", "==", false).get(),
-    db.collection("tasks").where("isGeneral", "==", true).where("managerName", "==", u.managerName).where("department", "==", u.department).get(),
+    db.collection("tasks").where("isGeneral", "==", true).where("managerEmpNumber", "==", u.managerEmpNumber).where("department", "==", u.department).get(),
   ]);
   /* General tasks: show if pending (no one claimed yet) OR claimed by ME */
   const generalTasks = s2.docs
