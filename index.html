@@ -1012,7 +1012,11 @@ async function fsCompleteTask(taskId, status, comments) {
       completedTime    : fmtTime(now),
       completedAt      : firebase.firestore.FieldValue.serverTimestamp(),
     };
-    /* For general tasks — record who claimed/completed it */
+    /* Record who completed — for ALL tasks (general AND personal) */
+    if (S.user) {
+      updateData.completedByName      = S.user.name;
+      updateData.completedByEmpNumber = S.user.employmentNumber;
+    }
     if (taskData.isGeneral && S.user) {
       updateData.claimedByEmpNumber = S.user.employmentNumber;
       updateData.claimedByName      = S.user.name;
@@ -2352,10 +2356,11 @@ function renderApp() {
           <div class="hs-stat-sub"><span id="hs-team-done">—</span> done &nbsp;·&nbsp; <span id="hs-team-pend" style="color:#e6a817;">—</span> pending</div>
           <div style="font-size:9px;color:#0F6E56;margin-top:4px;font-weight:600;">▶ TAP FOR SUMMARY</div>
         </div>
-        <div class="hs-stat-box">
-          <div class="hs-stat-n" id="hs-total-done" style="color:#0F6E56;">—</div>
-          <div class="hs-stat-l">Total Done</div>
-          <div class="hs-stat-sub">my + team combined</div>
+        <div class="hs-stat-box ats-stat-box-click" onclick="showArchive()" title="View archived completed tasks">
+          <div class="hs-stat-n" id="hs-total-done" style="color:#6b7280;">—</div>
+          <div class="hs-stat-l" style="color:#6b7280;">Archive</div>
+          <div class="hs-stat-sub" id="hs-archive-sub">older completed</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:4px;font-weight:600;">▶ TAP TO VIEW</div>
         </div>
       </div>
 
@@ -2457,6 +2462,7 @@ async function loadHomeStats() {
     const tmDone    = teamTasks.filter(isDone).length;
     const tmPend    = teamTasks.length - tmDone;
 
+    const archiveCount = Math.max(0, tmDone - 25);
     set("hs-my-total",   allMyTasks.length);
     set("hs-my-done",    myDone);
     set("hs-my-pend",    myPend);
@@ -2465,11 +2471,90 @@ async function loadHomeStats() {
     set("hs-team-total", teamTasks.length);
     set("hs-team-done",  tmDone);
     set("hs-team-pend",  tmPend);
-    set("hs-total-done", myDone + tmDone);
+    set("hs-total-done", archiveCount);
+    const subEl = document.getElementById("hs-archive-sub");
+    if (subEl) subEl.textContent = archiveCount > 0 ? archiveCount + " archived tasks" : "no archived yet";
   } catch(e) { console.error("loadHomeStats:", e); }
 }
 /* Alias for backward compat */
 function loadTeamStats() { loadHomeStats(); }
+
+/* ════════════════════════════════════════════════════
+   ARCHIVE — completed tasks beyond the latest 25
+   ════════════════════════════════════════════════════ */
+async function showArchive() {
+  showOverlay(`<div class="modal-wide">
+    <div class="ats-hdr">
+      <div class="ats-hdr-title">&#128193; Archive — Older Completed Tasks</div>
+      <button style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;" onclick="closeOverlay()">&#215;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:40px;color:#64748b;">Loading...</div>
+  </div>`);
+
+  let tasks = [];
+  if (FB_OK && S.user?.employmentNumber) {
+    try {
+      const snap = await db.collection("tasks")
+        .where("managerEmpNumber", "==", S.user.employmentNumber)
+        .get();
+      tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(t => t.status === "completed" || t.status === "completed_with_comments");
+    } catch(e) { console.warn("Archive fetch:", e); }
+  }
+
+  /* Sort newest completed first, then take everything AFTER position 25 */
+  const doneTs = t => (t.completedAt && t.completedAt.seconds) ? t.completedAt.seconds : (t.srNumber || 0);
+  tasks.sort((a, b) => doneTs(b) - doneTs(a));
+  const archived = tasks.slice(25); /* oldest 25+ are archived */
+
+  const body = document.querySelector(".modal-body");
+  if (!body) return;
+
+  if (!archived.length) {
+    body.innerHTML = `<div style="text-align:center;padding:30px;color:#94a3b8;">
+      <div style="font-size:32px;margin-bottom:10px;">📭</div>
+      No archived tasks yet.<br><span style="font-size:11px;">Archive fills up when your team completes more than 25 tasks.</span>
+    </div>`;
+    return;
+  }
+
+  const empMap = {};
+  (S.employees || []).forEach(e => { empMap[e.employmentNumber] = e.designation || "—"; });
+
+  const rows = archived.map((t, i) => {
+    const isGeneral  = t.isGeneral === true;
+    const empName    = isGeneral ? ("General — " + (t.department || "All")) : (t.assignedToName || "—");
+    const completedBy = t.claimedByName || t.completedByName || (isGeneral ? "—" : (t.assignedToName || "—"));
+    const taskText   = t.taskDescription || "—";
+    const doneDate   = t.completedDate || "—";
+    return `<tr style="background:#f3f4f6;opacity:0.85;">
+      <td class="ats-sr" style="color:#9ca3af;">${i + 1}</td>
+      <td style="max-width:160px;word-break:break-word;font-size:12px;color:#9ca3af;">${esc(taskText)}</td>
+      <td style="font-size:11px;color:#9ca3af;">${esc(empName)}</td>
+      <td style="font-size:11px;color:#6b7280;font-weight:600;">${esc(completedBy)}</td>
+      <td><span class="ats-badge" style="background:#e5e7eb;color:#6b7280;">${isGeneral ? "General" : "Personal"}</span></td>
+      <td style="font-size:11px;color:#9ca3af;">${esc(doneDate)}</td>
+    </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <div style="padding:8px 14px;font-size:12px;color:#6b7280;background:#f8fafc;border-bottom:0.5px solid #e2e8f0;">
+      ${archived.length} archived task${archived.length !== 1 ? "s" : ""} — these completed before the latest 25
+    </div>
+    <div class="ats-table-wrap">
+      <table class="ats-table">
+        <thead><tr>
+          <th style="width:28px">#</th>
+          <th>Task</th>
+          <th>Assigned To</th>
+          <th>Completed By</th>
+          <th style="width:70px">Type</th>
+          <th style="width:80px">Done Date</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
 
 /* ════════════════════════════════════════════════════
    MY TASKS SUMMARY — tapping the "My Tasks" stat box
@@ -2583,12 +2668,14 @@ async function showAssignedTasksSummary() {
     } catch(e) { console.warn("ATS fetch error:", e); }
   }
 
-  /* Sort: pending first (newest assigned first), completed at bottom (newest completed first) */
+  /* Sort: pending newest first, completed newest first */
   const tsOf   = t => (t.createdAt   && t.createdAt.seconds)   ? t.createdAt.seconds   : (t.srNumber || 0);
   const doneTs = t => (t.completedAt && t.completedAt.seconds) ? t.completedAt.seconds : (t.srNumber || 0);
   const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
   const pending_t = tasks.filter(t => !isDoneT(t)).sort((a,b) => tsOf(b) - tsOf(a));
-  const done_t    = tasks.filter(t => isDoneT(t)).sort((a,b) => doneTs(b) - doneTs(a));
+  const done_all  = tasks.filter(t => isDoneT(t)).sort((a,b) => doneTs(b) - doneTs(a));
+  const done_t    = done_all.slice(0, 25); /* only show latest 25 completed */
+  const archivedCount = Math.max(0, done_all.length - 25);
   tasks = [...pending_t, ...done_t];
 
   /* Build employee designation lookup map */
@@ -2599,35 +2686,37 @@ async function showAssignedTasksSummary() {
 
   /* Stats */
   const total   = tasks.length;
-  const done    = tasks.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
-  const pending = total - done;
+  const done    = done_t.length;
+  const pending = pending_t.length;
   const today   = fmtDate(new Date());
 
   /* Build table rows */
   const rows = tasks.length === 0
     ? `<tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">No tasks assigned yet.</td></tr>`
     : tasks.map((t, i) => {
-        const isDone    = t.status === "completed" || t.status === "completed_with_comments";
+        const isDone    = isDoneT(t);
         const isGeneral = t.isGeneral === true;
         const empName   = isGeneral ? ("General — " + (t.department || "All")) : (t.assignedToName || "—");
         const empNum    = isGeneral ? "—" : (t.assignedToEmpNumber || "—");
         const empPos    = isGeneral ? "All Team" : (empMap[empNum] || "—");
+        const completedBy = isDone ? (t.claimedByName || t.completedByName || (isGeneral ? "—" : (t.assignedToName || "—"))) : "—";
         const taskText  = t.taskDescription || t.taskName || t.task || "—";
-        const issued    = t.assignedDate || t.createdAt || "—";
+        const issued    = t.assignedDate || "—";
         const doneDate  = isDone ? (t.completedDate || "—") : "—";
-        const rowStyle = isDone ? 'background:#f3f4f6;opacity:0.78;' : '';
+        const rowStyle  = isDone ? 'background:#f3f4f6;opacity:0.78;' : '';
         const textStyle = isDone ? 'color:#9ca3af;' : '';
         return `<tr style="${rowStyle}">
           <td class="ats-sr">${i + 1}</td>
-          <td style="max-width:180px;word-break:break-word;font-size:12px;line-height:1.4;${textStyle}">${esc(taskText)}</td>
+          <td style="max-width:160px;word-break:break-word;font-size:12px;line-height:1.4;${textStyle}">${esc(taskText)}</td>
           <td><div class="ats-emp-name" style="${textStyle}">${esc(empName)}</div><div class="ats-emp-pos">${esc(empPos)}</div></td>
-          <td style="font-size:11px;color:#94a3b8;">${esc(empNum)}</td>
+          <td style="font-size:11px;${isDone?'color:#0F6E56;font-weight:600;':'color:#94a3b8;'}">${esc(completedBy)}</td>
           <td style="font-size:11px;white-space:nowrap;${textStyle}">${esc(issued)}</td>
           <td><span class="ats-badge ${isGeneral ? 'ats-badge-gen' : 'ats-badge-per'}">${isGeneral ? 'General' : 'Personal'}</span></td>
           <td><span class="ats-badge ${isDone ? 'ats-badge-done' : 'ats-badge-pend'}">${isDone ? '&#10003; Done' : '&#9200; Pending'}</span></td>
           <td style="font-size:11px;color:#9ca3af;white-space:nowrap;">${isDone ? esc(doneDate) : '—'}</td>
         </tr>`;
-      }).join("");
+      }).join("")
+    + (archivedCount > 0 ? `<tr><td colspan="8" style="text-align:center;padding:10px;font-size:11px;color:#9ca3af;background:#f8fafc;">+ ${archivedCount} older completed task${archivedCount>1?'s':''} in Archive — tap Archive button on home screen</td></tr>` : "");
 
   const html = `<div class="modal-wide">
     <div class="ats-hdr">
@@ -2651,13 +2740,13 @@ async function showAssignedTasksSummary() {
         <thead>
           <tr>
             <th style="width:28px">#</th>
-            <th style="min-width:160px">Task</th>
-            <th style="min-width:130px">Assigned To</th>
-            <th style="width:70px">Emp #</th>
+            <th style="min-width:140px">Task</th>
+            <th style="min-width:110px">Assigned To</th>
+            <th style="min-width:100px;color:#0F6E56;">Completed By</th>
             <th style="width:80px">Issued</th>
-            <th style="width:72px">Category</th>
-            <th style="width:75px">Status</th>
-            <th style="width:80px">Done Date</th>
+            <th style="width:68px">Category</th>
+            <th style="width:70px">Status</th>
+            <th style="width:75px">Done Date</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -4210,10 +4299,7 @@ function anPrint(empNum) {
     .sec{margin:14px 0}.sec-title{font-size:12px;font-weight:800;color:#0F6E56;border-bottom:2px solid #0F6E56;padding-bottom:4px;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
     .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px}
     .inf{display:flex;justify-content:space-between;padding:4px 0;border-bottom:.5px solid #e2e8f0}.inf-l{color:#64748b}.inf-v{font-weight:700}
-    .stat-row{display:flex;gap:8px;margin:10px 0}
-    .stat-box{flex:1;border:1px solid #e2e8f0;border-radius:6px;padding:9px;text-align:center}
-    .stat-n{font-size:22px;font-weight:800}.stat-l{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-    .grade-row{display:flex;align-items:center;gap:14px;background:${g.bg};border-radius:8px;padding:12px;margin:10px 0}
+    .stat-row{display:flex;gap:8px;margin:10px 0}    .grade-row{display:flex;align-items:center;gap:14px;background:${g.bg};border-radius:8px;padding:12px;margin:10px 0}
     .grade-circ{width:50px;height:50px;border-radius:50%;border:3px solid ${g.bar};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:${g.txt};background:${g.bg}}
     .eff-bar{background:#e2e8f0;border-radius:4px;height:7px;margin-top:6px}.eff-fill{background:${g.bar};height:7px;border-radius:4px;width:${d.efficiency}%}
     table{width:100%;border-collapse:collapse;font-size:11px}
@@ -4223,6 +4309,8 @@ function anPrint(empNum) {
     .sig-row{display:flex;gap:16px;margin-top:18px}
     .sig-box{flex:1;border-top:1.5px solid #0f172a;padding-top:6px}
     .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
+    .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:9px;color:#94a3b8}
+  </style></head><body>
   <div class="hdr"><div><div class="hdr-title">${esc(S.project?.companyName||'IHCC')}</div><div class="hdr-sub">Performance Evaluation Report</div></div><div class="hdr-right">${today}<br>${esc(city)}</div></div>
   <div class="wrap" style="padding:10px 16px">
     <div class="sec"><div class="sec-title">Employee Information</div>
@@ -4269,6 +4357,7 @@ function anPrint(empNum) {
   const w = window.open('', '_blank', 'width=860,height=1100');
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
 }
+
 /* ══════════════════════════════════════════════════════
    BOOT — called when DOM is ready
    ══════════════════════════════════════════════════════ */
