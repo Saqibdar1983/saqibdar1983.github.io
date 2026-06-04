@@ -596,6 +596,15 @@
     .pg-stat-cell:last-child { border-right: none; }
     .pg-stat-n { font-size: 22px; font-weight: bold; line-height: 1; }
     .pg-stat-l { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; margin-top: 3px; }
+    /* My Tasks filter bar */
+    .mt-filter-bar { display:flex; gap:6px; padding:8px 10px; background:#f8fafc; border-bottom:0.5px solid #e2e8f0; flex-shrink:0; }
+    .mt-filter-btn { flex:1; padding:7px 4px; border:1.5px solid #e2e8f0; border-radius:8px; background:#fff; font-size:10px; font-weight:700; cursor:pointer; text-align:center; color:#64748b; transition:all .15s; line-height:1.3; }
+    .mt-filter-btn:active { transform:scale(.97); }
+    .mt-filter-btn.active-personal { background:#0F6E56; color:#fff; border-color:#0F6E56; }
+    .mt-filter-btn.active-general  { background:#185FA5; color:#fff; border-color:#185FA5; }
+    .mt-filter-btn.active-completed { background:#6b7280; color:#fff; border-color:#6b7280; }
+    .mt-filter-btn.active-pending  { background:#e6a817; color:#fff; border-color:#e6a817; }
+    .mt-sec-hdr { padding:7px 12px 3px; font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.8px; background:#f1f5f9; border-bottom:0.5px solid #e2e8f0; }
     /* Employee progress bar */
     .emp-prog-bg { background: #f1f5f9; height: 5px; border-radius: 3px; overflow: hidden; margin-top: 8px; }
     .emp-prog-fill { height: 100%; border-radius: 3px; }
@@ -2739,6 +2748,7 @@ function editProfile() {
    ════════════════════════════════════════════════════ */
 function goToMyTasks() {
   S.selEmp = null; S.editMode = false; S.newTasks = [];
+  S.myTasksFilter = S.myTasksFilter || "personal";
   markNotificationsRead("my_tasks");
   document.getElementById("app").innerHTML = `
     <div class="tt-hdr">
@@ -2755,19 +2765,11 @@ function goToMyTasks() {
         </button>
       </div>
     </div>
-    <div class="pg-stats-bar">
-      <div class="pg-stat-cell">
-        <div class="pg-stat-n" id="my-total" style="color:#0F6E56;">—</div>
-        <div class="pg-stat-l">Assigned to Me</div>
-      </div>
-      <div class="pg-stat-cell">
-        <div class="pg-stat-n" id="my-done" style="color:#0F6E56;">—</div>
-        <div class="pg-stat-l">I Completed</div>
-      </div>
-      <div class="pg-stat-cell">
-        <div class="pg-stat-n" id="my-pending" style="color:#e6a817;">—</div>
-        <div class="pg-stat-l">I Pending</div>
-      </div>
+    <div class="mt-filter-bar" id="mt-filter-bar">
+      <button id="mf-personal"  class="mt-filter-btn" onclick="applyMyTasksFilter('personal')">Personal<br>Tasks</button>
+      <button id="mf-general"   class="mt-filter-btn" onclick="applyMyTasksFilter('general')">General<br>Tasks</button>
+      <button id="mf-completed" class="mt-filter-btn" onclick="applyMyTasksFilter('completed')">I<br>Completed</button>
+      <button id="mf-pending"   class="mt-filter-btn" onclick="applyMyTasksFilter('pending')">I<br>Pending</button>
     </div>
     <div id="mt-body" style="flex:1;overflow-y:auto;"><div class="loading-state"></div></div>`;
   loadMyTasks();
@@ -2881,29 +2883,36 @@ async function refreshMyTasks() {
 async function loadMyTasks() {
   const b = document.getElementById("mt-body");
   if (!b) return;
-
   S.myTasks = await fsGetMyTasks();
-
-
-
   updateHeaderStats();
+  renderMyTasksList();
+}
 
-  if (!S.myTasks.length) {
+function applyMyTasksFilter(filter) {
+  S.myTasksFilter = filter;
+  renderMyTasksList();
+}
+
+function renderMyTasksList() {
+  const b = document.getElementById("mt-body");
+  if (!b) return;
+
+  /* Update active button styling */
+  ["personal","general","completed","pending"].forEach(function(f) {
+    const btn = document.getElementById("mf-" + f);
+    if (!btn) return;
+    btn.className = "mt-filter-btn" + (S.myTasksFilter === f ? " active-" + f : "");
+  });
+
+  if (!S.myTasks || !S.myTasks.length) {
     b.innerHTML = `<div class="empty-state">No tasks assigned yet.<br>Pull down to refresh or ask your manager.</div>`;
     return;
   }
 
-  const today    = new Date().toISOString().split("T")[0];
-  /* Sort helper: use Firestore timestamp seconds if available, fallback to srNumber */
-  const tsOf   = t => (t.createdAt && t.createdAt.seconds) ? t.createdAt.seconds : (t.srNumber || 0);
+  const today  = new Date().toISOString().split("T")[0];
+  const tsOf   = t => (t.createdAt  && t.createdAt.seconds)  ? t.createdAt.seconds  : (t.srNumber || 0);
   const doneTs = t => (t.completedAt && t.completedAt.seconds) ? t.completedAt.seconds : (t.srNumber || 0);
-
-  const pending  = S.myTasks
-    .filter(t => t.status === "pending" || t.status === "returned")
-    .sort((a, b) => tsOf(b) - tsOf(a));   /* Newest first */
-  const done     = S.myTasks
-    .filter(t => t.status !== "pending" && t.status !== "returned")
-    .sort((a, b) => doneTs(b) - doneTs(a)); /* Most recently completed first */
+  const filter  = S.myTasksFilter || "personal";
 
   function taskRow(t) {
     const isReturned = t.status === "returned";
@@ -2918,28 +2927,24 @@ async function loadMyTasks() {
           : (isOverdue
               ? `<span class="badge" style="background:#fde8e8;color:#7a1c1c;border:1px solid #e57373;">Overdue</span>`
               : `<span class="badge b-pend">Pending</span>`));
-    const genTag   = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
+    const genTag = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
     const returnedNote = isReturned && t.returnedComments
       ? `<div style="margin-top:5px;font-size:11px;color:#7d3b00;background:#fff8f0;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:3px;"><b>Reason:</b> ${esc(t.returnedComments)}</div>`
       : "";
-
-    /* Buttons — differ based on status and who is viewing */
     let actionBtns = "";
     if (isReturned) {
-      /* Manager sees Reassign button */
       actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
-        <button class="tc-btn tc-btn-reassign btn-sm" onclick="doReassign('${t.id}')" title="Send back to employee">↺ Reassign</button>`;
+        <button class="tc-btn tc-btn-reassign btn-sm" onclick="doReassign('${t.id}')" title="Send back">↺ Reassign</button>`;
     } else if (isDone) {
       actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
-        <button class="tick-btn done" disabled title="Completed">✓</button>
+        <button class="tick-btn done" disabled>✓</button>
         <button class="tick-btn done-c" disabled>✓+</button>`;
     } else {
       actionBtns = `<button class="btn btn-grey btn-sm" onclick="viewTaskDetail('${t.id}')">View</button>
         <button class="tick-btn" onclick="doComplete('${t.id}','completed')" title="Mark Done">✓</button>
         <button class="tick-btn" onclick="doCompleteComment('${t.id}')" title="Done with Comments">✓+</button>
-        <button class="tc-btn tc-btn-return btn-sm" onclick="doReturnTask('${t.id}')" title="Return Task to Manager">↩ Return</button>`;
+        <button class="tc-btn tc-btn-return btn-sm" onclick="doReturnTask('${t.id}')" title="Return Task">↩ Return</button>`;
     }
-
     return `<div class="mt-row${isDone ? ' mt-row-done' : ''}${isReturned ? ' mt-row-done' : ''}">
       <div class="mt-row-bar ${barClass}"></div>
       <div class="mt-row-body">
@@ -2949,22 +2954,52 @@ async function loadMyTasks() {
           ${t.targetCompletionDate ? `<span><i class="ti ti-alarm"></i>Due: ${esc(t.targetCompletionDate)}</span>` : ""}
           ${t.building ? `<span><i class="ti ti-building"></i>${esc(t.building)}${t.floor ? ", F-"+esc(t.floor) : ""}</span>` : ""}
           <span>${badge}</span>
-        </div>
-        ${returnedNote}
+        </div>${returnedNote}
       </div>
       <div class="mt-row-acts">${actionBtns}</div>
     </div>`;
   }
 
-  const pendingHtml = pending.length
-    ? `<div class="mt-section-hdr"><i class="ti ti-clock" style="vertical-align:-1px;"></i> Pending &nbsp;(${pending.length})</div>` + pending.map(taskRow).join("")
-    : "";
+  function sectionHdr(icon, label, count, color) {
+    return `<div class="mt-section-hdr" style="color:${color||'#64748b'};"><i class="ti ${icon}" style="vertical-align:-1px;color:${color||'#64748b'};"></i> ${label} &nbsp;(${count})</div>`;
+  }
 
-  const doneHtml = done.length
-    ? `<div class="mt-section-hdr" style="margin-top:4px;color:#9ca3af;"><i class="ti ti-circle-check" style="vertical-align:-1px;color:#9ca3af;"></i> Completed &nbsp;(${done.length}) &nbsp;<span style="font-size:9px;font-weight:400;">— newest first</span></div>` + done.map(taskRow).join("")
-    : "";
+  let html = "";
 
-  b.innerHTML = pendingHtml + doneHtml;
+  if (filter === "personal") {
+    /* Personal tasks only — pending + completed */
+    const perPend = S.myTasks.filter(t => !t.isGeneral && (t.status==="pending"||t.status==="returned")).sort((a,b)=>tsOf(b)-tsOf(a));
+    const perDone = S.myTasks.filter(t => !t.isGeneral && t.status!=="pending" && t.status!=="returned").sort((a,b)=>doneTs(b)-doneTs(a));
+    if (!perPend.length && !perDone.length) { b.innerHTML=`<div class="empty-state">No personal tasks.</div>`; return; }
+    if (perPend.length) html += sectionHdr("ti-clock","Pending",perPend.length,"#e6a817") + perPend.map(taskRow).join("");
+    if (perDone.length) html += sectionHdr("ti-circle-check","Completed",perDone.length,"#9ca3af") + perDone.map(taskRow).join("");
+
+  } else if (filter === "general") {
+    /* General tasks only — pending + completed */
+    const genPend = S.myTasks.filter(t => t.isGeneral && (t.status==="pending"||t.status==="returned")).sort((a,b)=>tsOf(b)-tsOf(a));
+    const genDone = S.myTasks.filter(t => t.isGeneral && t.status!=="pending" && t.status!=="returned").sort((a,b)=>doneTs(b)-doneTs(a));
+    if (!genPend.length && !genDone.length) { b.innerHTML=`<div class="empty-state">No general tasks.</div>`; return; }
+    if (genPend.length) html += sectionHdr("ti-clock","Pending",genPend.length,"#e6a817") + genPend.map(taskRow).join("");
+    if (genDone.length) html += sectionHdr("ti-circle-check","Completed",genDone.length,"#9ca3af") + genDone.map(taskRow).join("");
+
+  } else if (filter === "completed") {
+    /* All completed — Personal first, then General */
+    const perDone = S.myTasks.filter(t => !t.isGeneral && t.status!=="pending" && t.status!=="returned").sort((a,b)=>doneTs(b)-doneTs(a));
+    const genDone = S.myTasks.filter(t => t.isGeneral  && t.status!=="pending" && t.status!=="returned").sort((a,b)=>doneTs(b)-doneTs(a));
+    if (!perDone.length && !genDone.length) { b.innerHTML=`<div class="empty-state">No completed tasks yet.</div>`; return; }
+    if (perDone.length) html += sectionHdr("ti-circle-check","Personal Completed",perDone.length,"#9ca3af") + perDone.map(taskRow).join("");
+    if (genDone.length) html += sectionHdr("ti-circle-check","General Completed",genDone.length,"#9ca3af") + genDone.map(taskRow).join("");
+
+  } else if (filter === "pending") {
+    /* All pending — Personal first, then General */
+    const perPend = S.myTasks.filter(t => !t.isGeneral && (t.status==="pending"||t.status==="returned")).sort((a,b)=>tsOf(b)-tsOf(a));
+    const genPend = S.myTasks.filter(t => t.isGeneral  && (t.status==="pending"||t.status==="returned")).sort((a,b)=>tsOf(b)-tsOf(a));
+    if (!perPend.length && !genPend.length) { b.innerHTML=`<div class="empty-state">No pending tasks. All done!</div>`; return; }
+    if (perPend.length) html += sectionHdr("ti-clock","Personal Pending",perPend.length,"#e6a817") + perPend.map(taskRow).join("");
+    if (genPend.length) html += sectionHdr("ti-clock","General Pending",genPend.length,"#185FA5") + genPend.map(taskRow).join("");
+  }
+
+  b.innerHTML = html || `<div class="empty-state">No tasks found for this filter.</div>`;
 }
 
 async function doComplete(taskId, status) {
@@ -4189,8 +4224,6 @@ function anPrint(empNum) {
     .sig-row{display:flex;gap:16px;margin-top:18px}
     .sig-box{flex:1;border-top:1.5px solid #0f172a;padding-top:6px}
     .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
-    .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:9px;color:#94a3b8}
-  </style></head><body>
   <div class="hdr"><div><div class="hdr-title">${esc(S.project?.companyName||'IHCC')}</div><div class="hdr-sub">Performance Evaluation Report</div></div><div class="hdr-right">${today}<br>${esc(city)}</div></div>
   <div class="wrap" style="padding:10px 16px">
     <div class="sec"><div class="sec-title">Employee Information</div>
@@ -4212,7 +4245,7 @@ function anPrint(empNum) {
       </div>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
-          <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
+        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
           <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
           <div class="eff-bar"><div class="eff-fill"></div></div>
         </div>
