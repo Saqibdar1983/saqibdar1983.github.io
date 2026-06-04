@@ -329,8 +329,8 @@
     .tt-save-btn:hover { background: #085041; }
 
     /* ══ BELL NOTIFICATION DOT ══ */
-    .dtm-bell-wrap { display:inline-flex; align-items:center; position:relative; margin-left:6px; }
-    .dtm-bell-wrap .ti-bell { font-size:15px; color:#e53e3e; animation: dtm-bell-ring 1.2s ease infinite; }
+    .dtm-bell-wrap { display:inline-flex; align-items:center; position:relative; margin-left:8px; cursor:pointer; }
+    .dtm-bell-wrap .ti-bell { font-size:24px; color:#e53e3e; animation: dtm-bell-ring 1.2s ease infinite; }
     @keyframes dtm-bell-ring {
       0%,100% { transform: rotate(0deg); }
       15%      { transform: rotate(18deg); }
@@ -339,10 +339,21 @@
       60%      { transform: rotate(-8deg); }
       75%      { transform: rotate(4deg); }
     }
-    .dtm-bell-badge { position:absolute; top:-5px; right:-7px; background:#e53e3e; color:#fff; font-size:9px; font-weight:700; min-width:14px; height:14px; border-radius:7px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1.5px solid #fff; line-height:1; }
+    .dtm-bell-badge { position:absolute; top:-6px; right:-8px; background:#e53e3e; color:#fff; font-size:10px; font-weight:700; min-width:18px; height:18px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #fff; line-height:1; }
     .dtm-hdr-bell-wrap { position:relative; display:inline-flex; cursor:pointer; margin-left:10px; }
-    .dtm-hdr-bell-wrap .ti-bell { font-size:20px; color:#fff; }
-    .dtm-hdr-bell-badge { position:absolute; top:-5px; right:-6px; background:#e53e3e; color:#fff; font-size:9px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:2px solid #0F6E56; }
+    .dtm-hdr-bell-wrap .ti-bell { font-size:28px; color:#fff; }
+    .dtm-hdr-bell-badge { position:absolute; top:-6px; right:-8px; background:#e53e3e; color:#fff; font-size:10px; font-weight:700; min-width:20px; height:20px; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #0F6E56; }
+    /* Bell notification floating popup */
+    .dtm-notif-popup { position:fixed; z-index:99999; background:#fff; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.22); width:min(340px,92vw); max-height:60vh; overflow-y:auto; border:1.5px solid #e53e3e; }
+    .dtm-notif-hdr { background:#e53e3e; color:#fff; padding:11px 14px; display:flex; justify-content:space-between; align-items:center; border-radius:10px 10px 0 0; }
+    .dtm-notif-hdr-title { font-size:13px; font-weight:700; letter-spacing:.3px; }
+    .dtm-notif-close { background:none; border:none; color:#fff; font-size:20px; cursor:pointer; line-height:1; padding:0 2px; }
+    .dtm-notif-item { padding:10px 14px; border-bottom:0.5px solid #f1f5f9; }
+    .dtm-notif-item:last-child { border-bottom:none; }
+    .dtm-notif-from { font-size:11px; font-weight:700; color:#0F6E56; margin-bottom:3px; }
+    .dtm-notif-msg { font-size:12px; color:#0f172a; line-height:1.5; }
+    .dtm-notif-time { font-size:10px; color:#94a3b8; margin-top:3px; }
+    .dtm-notif-empty { padding:20px 14px; text-align:center; color:#94a3b8; font-size:12px; }
 
     /* ══ FLOATING SAVE BAR ══ */
     .dtm-float-bar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:min(820px,100%); z-index:9999; background:#1a1a2e; color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; box-shadow:0 -4px 20px rgba(0,0,0,0.35); border-top:2px solid #0F6E56; }
@@ -1084,6 +1095,94 @@ function updateBellIcons() {
 }
 
 /* Mark all unread notifications for this section as read */
+/* Show floating popup when bell is tapped */
+async function showBellNotifications(section, event) {
+  if (event) event.stopPropagation();
+  /* Remove any existing popup */
+  var old = document.getElementById("dtm-notif-popup");
+  if (old) { old.remove(); return; }
+
+  /* Build popup */
+  var popup = document.createElement("div");
+  popup.id = "dtm-notif-popup";
+  popup.className = "dtm-notif-popup";
+
+  /* Position near the bell that was clicked */
+  if (event && event.currentTarget) {
+    var rect = event.currentTarget.getBoundingClientRect();
+    var top  = Math.min(rect.bottom + 8, window.innerHeight - 320);
+    var left = Math.max(8, Math.min(rect.left - 60, window.innerWidth - 360));
+    popup.style.cssText = "position:fixed;top:" + top + "px;left:" + left + "px;z-index:99999;";
+  } else {
+    popup.style.cssText = "position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:99999;";
+  }
+
+  var title = section === "my_tasks" ? "&#128276; New Tasks Assigned to You"
+            : section === "assign_tasks" ? "&#128276; Task Completion Updates"
+            : "&#128276; All Notifications";
+
+  popup.innerHTML = '<div class="dtm-notif-hdr"><span class="dtm-notif-hdr-title">' + title + '</span><button class="dtm-notif-close" onclick="document.getElementById(\'dtm-notif-popup\').remove()">&#215;</button></div>'
+    + '<div id="dtm-notif-body" class="dtm-notif-empty">Loading...</div>';
+  document.body.appendChild(popup);
+
+  /* Close when clicking outside */
+  setTimeout(function() {
+    document.addEventListener("click", function closePop(e) {
+      var p = document.getElementById("dtm-notif-popup");
+      if (p && !p.contains(e.target)) { p.remove(); document.removeEventListener("click", closePop); }
+    });
+  }, 100);
+
+  /* Fetch notifications */
+  var body = document.getElementById("dtm-notif-body");
+  if (!FB_OK || !S.user) {
+    body.innerHTML = '<div class="dtm-notif-empty">Connect to Firebase to see messages</div>';
+    return;
+  }
+  try {
+    var q = db.collection("notifications").where("toEmpNumber", "==", S.user.employmentNumber);
+    if (section !== "all") q = q.where("section", "==", section);
+    q = q.where("read", "==", false).orderBy("createdAt", "desc").limit(10);
+    var snap = await q.get();
+    if (snap.empty) {
+      body.innerHTML = '<div class="dtm-notif-empty">No new messages</div>';
+      return;
+    }
+    var typeLabel = { task_assigned:"New Task", task_assigned_general:"General Task", task_completed:"Task Completed", task_returned:"Task Returned" };
+    var html = "";
+    snap.forEach(function(doc) {
+      var d = doc.data();
+      var lbl   = typeLabel[d.type] || "Notification";
+      var when  = d.createdAt ? new Date(d.createdAt.seconds * 1000).toLocaleString("en-GB", {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+      var color = d.type === "task_completed" ? "#0F6E56" : d.type === "task_returned" ? "#b45309" : "#185FA5";
+      html += '<div class="dtm-notif-item">'
+        + '<div class="dtm-notif-from" style="color:' + color + '">' + esc(d.fromName || "System") + ' &nbsp;&mdash;&nbsp; ' + lbl + '</div>'
+        + '<div class="dtm-notif-msg">' + esc(d.taskTitle || "No details") + '</div>'
+        + (when ? '<div class="dtm-notif-time">' + when + '</div>' : '')
+        + '</div>';
+    });
+    if (body) body.innerHTML = html;
+  } catch(e) {
+    /* If orderBy fails (no index), try without ordering */
+    try {
+      var q2 = db.collection("notifications").where("toEmpNumber","==",S.user.employmentNumber).where("read","==",false);
+      if (section !== "all") q2 = q2.where("section","==",section);
+      var snap2 = await q2.get();
+      if (snap2.empty) { if(body) body.innerHTML='<div class="dtm-notif-empty">No new messages</div>'; return; }
+      var html2 = "";
+      snap2.forEach(function(doc2) {
+        var d2 = doc2.data();
+        var typeLabel2 = { task_assigned:"New Task", task_assigned_general:"General Task", task_completed:"Task Completed", task_returned:"Task Returned" };
+        var lbl2  = typeLabel2[d2.type] || "Notification";
+        var color2 = d2.type === "task_completed" ? "#0F6E56" : d2.type === "task_returned" ? "#b45309" : "#185FA5";
+        html2 += '<div class="dtm-notif-item"><div class="dtm-notif-from" style="color:' + color2 + '">' + esc(d2.fromName||"System") + ' &mdash; ' + lbl2 + '</div>'
+          + '<div class="dtm-notif-msg">' + esc(d2.taskTitle||"No details") + '</div></div>';
+      });
+      if(body) body.innerHTML = html2 || '<div class="dtm-notif-empty">No new messages</div>';
+    } catch(e2) { if(body) body.innerHTML='<div class="dtm-notif-empty">Could not load messages</div>'; }
+  }
+}
+
 async function markNotificationsRead(section) {
   if (!FB_OK || !S.user) return;
   try {
@@ -2208,7 +2307,7 @@ function renderApp() {
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
           <div style="position:relative;display:inline-block;">
             <div class="hs-avatar" onclick="editProfile()" title="Edit profile" style="display:flex;align-items:center;justify-content:center;">${avatarInner}</div>
-            <span id="dtm-hdr-bell" class="dtm-hdr-bell-wrap" style="display:none;position:absolute;top:-6px;right:-8px;" title="You have notifications">
+            <span id="dtm-hdr-bell" class="dtm-hdr-bell-wrap" style="display:none;position:absolute;top:-6px;right:-8px;" title="You have notifications" onclick="showBellNotifications('all',event)">
               <i class="ti ti-bell" aria-hidden="true"></i>
               <span class="dtm-hdr-bell-badge" id="dtm-hdr-badge"></span>
             </span>
@@ -2261,7 +2360,7 @@ function renderApp() {
         <div class="hs-card-right">
           <div class="hs-card-title" style="display:flex;align-items:center;">
             My Tasks
-            <span id="dtm-bell-my" class="dtm-bell-wrap" style="display:none;" title="New tasks assigned to you">
+            <span id="dtm-bell-my" class="dtm-bell-wrap" style="display:none;" title="New tasks assigned to you" onclick="showBellNotifications('my_tasks',event)">
               <i class="ti ti-bell" aria-hidden="true"></i>
               <span class="dtm-bell-badge" id="dtm-bell-my-badge"></span>
             </span>
@@ -2282,7 +2381,7 @@ function renderApp() {
         <div class="hs-card-right">
           <div class="hs-card-title" style="display:flex;align-items:center;">
             Assign Tasks
-            <span id="dtm-bell-assign" class="dtm-bell-wrap" style="display:none;" title="Team member completed a task">
+            <span id="dtm-bell-assign" class="dtm-bell-wrap" style="display:none;" title="Team member completed a task" onclick="showBellNotifications('assign_tasks',event)">
               <i class="ti ti-bell" aria-hidden="true"></i>
               <span class="dtm-bell-badge" id="dtm-bell-assign-badge"></span>
             </span>
@@ -4014,8 +4113,6 @@ function anPrint(empNum) {
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Performance Report — ${esc(emp.name)}</title>
   <style>
     body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:0;padding:0}
-    @page{size:A4;margin:18mm 16mm}
     .hdr{background:#0f172a;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
     .hdr-title{font-size:18px;font-weight:800}.hdr-sub{font-size:11px;opacity:.7;margin-top:3px}.hdr-right{font-size:11px;text-align:right;opacity:.8}
     .wrap{padding:0}
