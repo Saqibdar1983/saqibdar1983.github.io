@@ -2791,6 +2791,11 @@ function goToAssignTasks() {
       </div>
     </div>
     ${!FB_OK ? `<div class="cfg-warn" style="margin:10px 12px 0;">&#9888; Firebase not connected — showing demo team.</div>` : ""}
+    <div style="padding:10px 12px 4px;">
+      <button onclick="openGeneralTaskPicker()" style="width:100%;padding:13px;background:#185FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.3px;">
+        <i class="ti ti-users" style="font-size:18px;" aria-hidden="true"></i> Assign General Task (Whole Team)
+      </button>
+    </div>
     <div id="emp-list" style="flex:1;overflow-y:auto;padding-bottom:70px;"><div class="loading-state"></div></div>`;
   refreshEmpList();
 }
@@ -3190,8 +3195,7 @@ async function refreshEmpList() {
           <span style="color:${barColor};font-weight:bold;">${pct}% done</span>
         </div>
         <div class="at-btns" style="margin-top:8px;">
-          <button class="at-btn at-btn-personal" onclick="openEmp(${i}, false)">Personal Task</button>
-          <button class="at-btn at-btn-general"  onclick="openEmp(${i}, true)">General Task</button>
+          <button class="at-btn at-btn-personal" onclick="openEmp(${i}, false)" style="width:100%;">Assign Personal Task</button>
         </div>
       </div>`;
     }).join("") +
@@ -3203,7 +3207,39 @@ function openEmp(idx, isGeneral) {
   S.isGeneral       = isGeneral;
   S.editMode        = false;
   S.newTasks        = [];
-  S.uploadUnlocked  = false;   // reset — ask password fresh for each employee window
+  S.uploadUnlocked  = false;
+  goToEmpTasks();
+}
+
+function openGeneralTaskPicker() {
+  if (!S.employees || !S.employees.length) {
+    toast("No employees found — load your team first");
+    return;
+  }
+  /* Get unique departments from team */
+  const depts = [...new Set(S.employees.map(function(e){ return e.department; }).filter(Boolean))];
+  if (depts.length === 1) {
+    /* Only one department — go straight */
+    const emp = S.employees.find(function(e){ return e.department === depts[0]; });
+    if (emp) { S.selEmp = emp; S.isGeneral = true; S.editMode = false; S.newTasks = []; S.uploadUnlocked = false; goToEmpTasks(); }
+    return;
+  }
+  /* Multiple departments — show picker */
+  const deptBtns = depts.map(function(d) {
+    return `<button class="btn btn-dark" style="margin:5px;padding:10px 18px;font-size:13px;border-radius:8px;width:calc(50% - 10px);" onclick="openGeneralForDept('${esc(d)}')">${esc(d)}</button>`;
+  }).join("");
+  showOverlay(modal("Assign General Task — Pick Department",
+    `<p style="font-size:13px;color:#64748b;margin-bottom:12px;">Task will be visible to ALL employees in the selected department.</p>
+     <div style="display:flex;flex-wrap:wrap;">${deptBtns}</div>`,
+    `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>`
+  ));
+}
+
+function openGeneralForDept(dept) {
+  closeOverlay();
+  const emp = S.employees.find(function(e){ return e.department === dept; });
+  if (!emp) { toast("No employee found for " + dept); return; }
+  S.selEmp = emp; S.isGeneral = true; S.editMode = false; S.newTasks = []; S.uploadUnlocked = false;
   goToEmpTasks();
 }
 
@@ -4155,7 +4191,7 @@ function anPrint(empNum) {
       </div>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
-        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
+          <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
           <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
           <div class="eff-bar"><div class="eff-fill"></div></div>
         </div>
