@@ -3374,7 +3374,7 @@ function openGeneralTaskPicker() {
     var p = (e.projectName || "").trim();
     if (p && !seen[p.toLowerCase()]) { seen[p.toLowerCase()] = true; projects.push(p); }
   });
-  /* If only one unique project → skip project picker */
+  /* If only one unique project → skip project picker, go straight to dept */
   if (projects.length <= 1) {
     S.generalTargetProject = projects[0] || "all";
     _openGeneralDeptPicker(S.employees);
