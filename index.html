@@ -2425,6 +2425,12 @@ function renderApp() {
           <i class="ti ti-lock" style="font-size:14px;color:#7d5800;" aria-hidden="true"></i>
         </div>
       </div>
+
+      <!-- Copyright -->
+      <div style="text-align:center;padding:18px 12px 6px;font-size:10px;color:#94a3b8;letter-spacing:.4px;">
+        &copy; 2026 &mdash; Daily Task Manager &nbsp;|&nbsp; EVA Application Division. SMD
+      </div>
+
     </div>`;
 
   loadHomeStats();
@@ -4358,6 +4364,9 @@ function anPrint(empNum) {
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
 }
 
+/* ══════════════════════════════════════════════════════
+   BOOT — called when DOM is ready
+   ═
 /* ══════════════════════════════════════════════════════
    BOOT — called when DOM is ready
    ══════════════════════════════════════════════════════ */
