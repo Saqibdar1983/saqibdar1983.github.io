@@ -928,12 +928,16 @@ async function fsGetMyTasks() {
     db.collection("tasks").where("assignedToEmpNumber", "==", u.employmentNumber).where("isGeneral", "==", false).get(),
     db.collection("tasks").where("managerEmpNumber", "==", u.managerEmpNumber).get(),
   ]);
-  /* General tasks: same manager, same department, pending OR claimed by ME */
+  /* General tasks: same manager, same dept, matching project, pending OR claimed by ME */
+  const myProject = u.projectName || "";
   const generalTasks = s2raw.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(t => {
       if (!t.isGeneral) return false;
       if (t.department !== u.department) return false;
+      /* Project filter: "all" means everyone sees it; specific project = only that project's team */
+      const tp = t.targetProject || "all";
+      if (tp !== "all" && myProject && tp !== myProject) return false;
       if (t.status === "pending" || t.status === "returned") return true;
       return t.claimedByEmpNumber === u.employmentNumber;
     });
@@ -961,6 +965,7 @@ async function fsSaveTasks(tasks, empNumber, empName, isGeneral, managerName, de
         assignedByEmpNumber : S.user.employmentNumber,
         assignedByName      : S.user.name,
         managerEmpNumber    : S.user.employmentNumber,
+        targetProject       : isGeneral ? (S.generalTargetProject || "all") : "personal",
         status              : "pending",
         createdAt           : firebase.firestore.FieldValue.serverTimestamp(),
       });
@@ -3362,31 +3367,81 @@ function openGeneralTaskPicker() {
     toast("No employees found — load your team first");
     return;
   }
-  /* Get unique departments from team */
-  const depts = [...new Set(S.employees.map(function(e){ return e.department; }).filter(Boolean))];
-  if (depts.length === 1) {
-    /* Only one department — go straight */
-    const emp = S.employees.find(function(e){ return e.department === depts[0]; });
-    if (emp) { S.selEmp = emp; S.isGeneral = true; S.editMode = false; S.newTasks = []; S.uploadUnlocked = false; goToEmpTasks(); }
+  /* Get unique project names from team members */
+  const projects = [...new Set(S.employees.map(function(e){ return e.projectName || ""; }).filter(Boolean))];
+  const myProject = S.user ? (S.user.projectName || "") : "";
+  /* If only one project (or none), go straight to dept picker */
+  if (projects.length <= 1) {
+    S.generalTargetProject = projects[0] || "all";
+    _openGeneralDeptPicker(S.employees);
     return;
   }
-  /* Multiple departments — show picker */
-  const deptBtns = depts.map(function(d) {
-    return `<button class="btn btn-dark" style="margin:5px;padding:10px 18px;font-size:13px;border-radius:8px;width:calc(50% - 10px);" onclick="openGeneralForDept('${esc(d)}')">${esc(d)}</button>`;
+  /* Multiple projects — show project picker */
+  const projBtns = projects.map(function(p) {
+    const isMine = p === myProject;
+    return `<button class="btn btn-dark" style="margin:5px;padding:10px 16px;font-size:12px;border-radius:8px;width:calc(50% - 10px);${isMine?'border:2px solid #0F6E56;':''}" onclick="pickGeneralProject('${esc(p)}')">${esc(p)}${isMine?' ✓':''}</button>`;
   }).join("");
-  showOverlay(modal("Assign General Task — Pick Department",
-    `<p style="font-size:13px;color:#64748b;margin-bottom:12px;">Task will be visible to ALL employees in the selected department.</p>
+  showOverlay(modal("Assign General Task — Select Project",
+    `<p style="font-size:13px;color:#64748b;margin-bottom:4px;">Your team works across multiple projects. Select which project team should receive this general task.</p>
+     <p style="font-size:11px;color:#94a3b8;margin-bottom:12px;">Only team members on the selected project will see this task.</p>
+     <div style="display:flex;flex-wrap:wrap;">${projBtns}</div>
+     <div style="margin-top:10px;border-top:0.5px solid #e2e8f0;padding-top:10px;">
+       <button class="btn" style="width:100%;background:#1f2937;color:#fff;border-radius:8px;padding:10px;" onclick="pickGeneralProject('all')">
+         &#127760; All Projects (Everyone sees this task)
+       </button>
+     </div>`,
+    `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>`
+  ));
+}
+
+function pickGeneralProject(project) {
+  closeOverlay();
+  S.generalTargetProject = project;
+  /* Filter employees by selected project */
+  var filtered = project === "all"
+    ? S.employees
+    : S.employees.filter(function(e){ return (e.projectName || "") === project; });
+  if (!filtered.length) { toast("No team members found for " + project); return; }
+  _openGeneralDeptPicker(filtered);
+}
+
+function _openGeneralDeptPicker(empList) {
+  var depts = [...new Set(empList.map(function(e){ return e.department; }).filter(Boolean))];
+  if (depts.length === 1) {
+    _openGeneralForDeptFiltered(depts[0], empList);
+    return;
+  }
+  var deptBtns = depts.map(function(d) {
+    return `<button class="btn btn-dark" style="margin:5px;padding:10px 16px;font-size:13px;border-radius:8px;width:calc(50% - 10px);" onclick="pickGeneralDept('${esc(d)}')">${esc(d)}</button>`;
+  }).join("");
+  showOverlay(modal("Select Department",
+    `<p style="font-size:13px;color:#64748b;margin-bottom:12px;">Task will be visible to all <b>${esc(S.generalTargetProject === 'all' ? 'team' : S.generalTargetProject)}</b> members in the selected department.</p>
      <div style="display:flex;flex-wrap:wrap;">${deptBtns}</div>`,
     `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>`
   ));
 }
 
-function openGeneralForDept(dept) {
+function pickGeneralDept(dept) {
   closeOverlay();
-  const emp = S.employees.find(function(e){ return e.department === dept; });
+  var empList = S.generalTargetProject === "all"
+    ? S.employees
+    : S.employees.filter(function(e){ return (e.projectName || "") === S.generalTargetProject; });
+  _openGeneralForDeptFiltered(dept, empList);
+}
+
+function _openGeneralForDeptFiltered(dept, empList) {
+  var emp = empList.find(function(e){ return e.department === dept; });
+  if (!emp) emp = S.employees.find(function(e){ return e.department === dept; });
   if (!emp) { toast("No employee found for " + dept); return; }
   S.selEmp = emp; S.isGeneral = true; S.editMode = false; S.newTasks = []; S.uploadUnlocked = false;
   goToEmpTasks();
+}
+
+function openGeneralForDept(dept) {
+  /* legacy — keep for backward compat */
+  closeOverlay();
+  S.generalTargetProject = S.generalTargetProject || "all";
+  _openGeneralForDeptFiltered(dept, S.employees);
 }
 
 async function renderTaskTable(c) {
