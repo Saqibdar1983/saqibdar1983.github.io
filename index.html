@@ -4372,7 +4372,35 @@ function anPrint(empNum) {
       </div>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
-        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div
+        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
+          <div class="eff-bar"><div class="eff-fill"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="sec"><div class="sec-title">Task Record</div>
+      <table><thead><tr><th>Task</th><th>Assigned</th><th>Status</th></tr></thead>
+      <tbody>${taskRows}</tbody></table>
+    </div>
+    <div class="rec-box">
+      <div style="font-size:11px;font-weight:700;color:#0F6E56;margin-bottom:4px">Manager Recommendation</div>
+      <div style="font-size:13px;font-weight:800">${rec}</div>
+      ${note&&note!='No additional comments.'?`<div style="font-size:11px;color:#334155;margin-top:4px">${esc(note)}</div>`:''}
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-size:11px;font-weight:700">${esc(S.user?.name||'Manager')}</div></div>
+      <div class="sig-box"><div class="sig-lbl">Date</div><div class="sig-space"></div><div style="font-size:11px">${today}</div></div>
+      <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div></div>
+    </div>
+    <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
+  </div></body></html>`;
+  const w = window.open('', '_blank', 'width=860,height=1100');
+  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
+}
+
+/* ══════════════════════════════════════════════════════
+   BOOT — called when DOM is ready
+   ══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
