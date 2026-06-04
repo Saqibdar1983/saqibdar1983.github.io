@@ -131,6 +131,13 @@
     .b-done { background: #e5e7eb; color: #6b7280; border: 1px solid #9ca3af; }
     .b-gen  { background: #cce5ff; color: #004085; border: 1px solid #0066cc; margin-left: 4px; }
     .b-returned { background: #fff3e0; color: #7d3b00; border: 1px solid #f59e0b; }
+    .b-urgent   { background: #fee2e2; color: #991b1b; border: 1px solid #ef4444; font-weight:700; }
+    .mt-row-urgent { background: #fff1f1 !important; border-left: 3px solid #ef4444 !important; }
+    .mt-row-urgent .mt-row-title { color: #7f1d1d !important; }
+    .tc-card-urgent { background: #fff1f1 !important; border: 1.5px solid #ef4444 !important; }
+    /* High Priority toggle button in form */
+    .hp-btn { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:11px; border:2px dashed #cbd5e1; border-radius:8px; background:#f8fafc; color:#64748b; font-size:13px; font-weight:700; cursor:pointer; transition:all .2s; }
+    .hp-btn.active { background:#fff1f1; border:2px solid #ef4444; color:#991b1b; }
 
     /* ── PAGE HEADER (back nav) ── */
     .pg-hdr { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #e0e0e0; gap: 9px; background: #fafafa; }
@@ -3021,7 +3028,8 @@ function renderMyTasksList() {
           : (isOverdue
               ? `<span class="badge" style="background:#fde8e8;color:#7a1c1c;border:1px solid #e57373;">Overdue</span>`
               : `<span class="badge b-pend">Pending</span>`));
-    const genTag = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
+    const genTag    = t.isGeneral ? `<span class="badge b-gen" style="margin-left:5px;">General</span>` : "";
+    const urgentTag = t.isHighPriority && !isDone ? `<span class="badge b-urgent" style="margin-left:5px;">🔴 High Priority</span>` : "";
     const returnedNote = isReturned && t.returnedComments
       ? `<div style="margin-top:5px;font-size:11px;color:#7d3b00;background:#fff8f0;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:3px;"><b>Reason:</b> ${esc(t.returnedComments)}</div>`
       : "";
@@ -3039,10 +3047,10 @@ function renderMyTasksList() {
         <button class="tick-btn" onclick="doCompleteComment('${t.id}')" title="Done with Comments">✓+</button>
         <button class="tc-btn tc-btn-return btn-sm" onclick="doReturnTask('${t.id}')" title="Return Task">↩ Return</button>`;
     }
-    return `<div class="mt-row${isDone ? ' mt-row-done' : ''}${isReturned ? ' mt-row-done' : ''}">
+    return `<div class="mt-row${isDone ? ' mt-row-done' : ''}${isReturned ? ' mt-row-done' : ''}${t.isHighPriority && !isDone ? ' mt-row-urgent' : ''}">
       <div class="mt-row-bar ${barClass}"></div>
       <div class="mt-row-body">
-        <div class="mt-row-title">#${t.srNumber} &nbsp;${esc(t.taskDescription)}${genTag}</div>
+        <div class="mt-row-title">#${t.srNumber} &nbsp;${esc(t.taskDescription)}${genTag}${urgentTag}</div>
         <div class="mt-row-meta">
           <span><i class="ti ti-calendar-event"></i>${esc(t.assignedDate)}</span>
           ${t.targetCompletionDate ? `<span><i class="ti ti-alarm"></i>Due: ${esc(t.targetCompletionDate)}</span>` : ""}
@@ -3412,15 +3420,16 @@ function drawTaskTable(b) {
     const dotColor = isDone ? "#9ca3af" : (isOverdue ? "#b33030" : "#e6c200");
     const statusText = isDone ? "Completed" : (isOverdue ? "Overdue" : "Pending");
     const statusColor = isDone ? "#9ca3af" : (isOverdue ? "#7a1c1c" : "#7d5800");
-    const genTag = t.isGeneral ? `<span class="tc-chip" style="background:#cce5ff;color:#004085;">General</span>` : "";
-    const newTag = isNew ? `<span class="tc-chip" style="background:#fef3c7;color:#92400e;">Unsaved</span>` : "";
+    const genTag     = t.isGeneral ? `<span class="tc-chip" style="background:#cce5ff;color:#004085;">General</span>` : "";
+    const newTag     = isNew ? `<span class="tc-chip" style="background:#fef3c7;color:#92400e;">Unsaved</span>` : "";
+    const urgTagCard = t.isHighPriority && !isDone && !isNew ? `<span class="tc-chip" style="background:#fee2e2;color:#991b1b;font-weight:700;">🔴 High Priority</span>` : "";
 
     const chips = [
       t.assignedDate ? `<span class="tc-chip"><i class="ti ti-calendar-event" aria-hidden="true"></i>${esc(t.assignedDate)} ${esc(t.assignedTime || "")}</span>` : "",
       t.targetCompletionDate ? `<span class="tc-chip" ${isOverdue ? 'style="background:#fde8e8;color:#7a1c1c;"' : ""}><i class="ti ti-alarm" aria-hidden="true"></i>Due: ${esc(t.targetCompletionDate)}</span>` : "",
       t.building ? `<span class="tc-chip"><i class="ti ti-building" aria-hidden="true"></i>${esc(t.building)}${t.floor ? ", F-"+esc(t.floor) : ""}${t.roomNumber ? ", #"+esc(t.roomNumber) : ""}</span>` : "",
       t.taskDept || t.department ? `<span class="tc-chip"><i class="ti ti-folder" aria-hidden="true"></i>${esc(t.taskDept || t.department)}</span>` : "",
-      genTag, newTag,
+      genTag, newTag, urgTagCard,
       isDone && t.completedDate ? `<span class="tc-chip" style="background:#E1F5EE;color:#085041;"><i class="ti ti-circle-check" aria-hidden="true"></i>Done: ${esc(t.completedDate)}</span>` : "",
     ].filter(Boolean).join("");
 
@@ -3430,7 +3439,8 @@ function drawTaskTable(b) {
          <button class="tc-btn tc-btn-done" onclick="mgComplete('${t.id}','completed')">✓ Done</button>
          <button class="tc-btn tc-btn-cmt"  onclick="mgCompleteComment('${t.id}')">✓+ Comment</button>`);
 
-    return `<div class="tc-card${isNew ? " new-card" : ""}${isDone ? '" style="background:#f3f4f6;opacity:0.78;' : ''}">
+    const urgentClass = t.isHighPriority && !isDone && !isNew ? " tc-card-urgent" : "";
+    return `<div class="tc-card${isNew ? " new-card" : ""}${urgentClass}${isDone ? '" style="background:#f3f4f6;opacity:0.78;' : ''}">
       <div class="tc-top">
         <div class="tc-title-row">
           <span class="tc-sr ${srClass}">#${t.srNumber}</span>
@@ -3812,10 +3822,19 @@ function showAddTaskForm() {
      </div>
      <div class="form-group"><label class="form-label">Remarks</label><input class="form-input" id="at-rmk" type="text" placeholder="Short remarks (optional)"></div>
      <div class="form-group"><label class="form-label">Details / Instructions</label><textarea class="form-input" id="at-det" rows="3" placeholder="Full details, method, special instructions..."></textarea></div>
+     <div class="form-group">
+       <label class="form-label">Priority</label>
+       <button type="button" class="hp-btn" id="hp-toggle" onclick="toggleHighPriority()">
+         🔴 &nbsp;Mark as High Priority
+       </button>
+       <div style="font-size:10px;color:#94a3b8;margin-top:5px;text-align:center;">Tap to toggle — task will appear with red highlight for the worker</div>
+     </div>
      <div id="at-photo-slot"></div>`,
     `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>
      <button class="btn btn-dark" onclick="addToStaged()">Add Task</button>`
   ));
+  /* Reset high priority flag for new form */
+  S.stagingHighPriority = false;
   /* Generate a staging key for photos on this new task */
   S.stagingPhotoKey = 'stg_' + Date.now();
   setTimeout(() => {
@@ -3853,11 +3872,26 @@ function addToStaged() {
     taskRemarks         : (document.getElementById("at-rmk")?.value  || "").trim(),
     details             : (document.getElementById("at-det")?.value  || "").trim(),
     photoKey            : S.stagingPhotoKey || null,
+    isHighPriority      : S.stagingHighPriority === true,
   });
+  S.stagingHighPriority = false;
   closeOverlay();
   drawTaskTable(document.getElementById("tbl-body"));
   toast("Task added ✓");
   showFloatSaveBar();
+}
+
+function toggleHighPriority() {
+  S.stagingHighPriority = !S.stagingHighPriority;
+  const btn = document.getElementById("hp-toggle");
+  if (!btn) return;
+  if (S.stagingHighPriority) {
+    btn.className = "hp-btn active";
+    btn.innerHTML = "🔴 &nbsp;HIGH PRIORITY — Active";
+  } else {
+    btn.className = "hp-btn";
+    btn.innerHTML = "🔴 &nbsp;Mark as High Priority";
+  }
 }
 
 /* ── Floating Save Bar (Option A) ── */
@@ -4338,38 +4372,7 @@ function anPrint(empNum) {
       </div>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
-        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
-          <div class="eff-bar"><div class="eff-fill"></div></div>
-        </div>
-      </div>
-    </div>
-    <div class="sec"><div class="sec-title">Task Record</div>
-      <table><thead><tr><th>Task</th><th>Assigned</th><th>Status</th></tr></thead>
-      <tbody>${taskRows}</tbody></table>
-    </div>
-    <div class="rec-box">
-      <div style="font-size:11px;font-weight:700;color:#0F6E56;margin-bottom:4px">Manager Recommendation</div>
-      <div style="font-size:13px;font-weight:800">${rec}</div>
-      ${note&&note!='No additional comments.'?`<div style="font-size:11px;color:#334155;margin-top:4px">${esc(note)}</div>`:''}
-    </div>
-    <div class="sig-row">
-      <div class="sig-box"><div class="sig-lbl">Manager Signature</div><div class="sig-space"></div><div style="font-size:11px;font-weight:700">${esc(S.user?.name||'Manager')}</div></div>
-      <div class="sig-box"><div class="sig-lbl">Date</div><div class="sig-space"></div><div style="font-size:11px">${today}</div></div>
-      <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div></div>
-    </div>
-    <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
-  </div></body></html>`;
-  const w = window.open('', '_blank', 'width=860,height=1100');
-  if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
-}
-
-/* ══════════════════════════════════════════════════════
-   BOOT — called when DOM is ready
-   ═
-/* ══════════════════════════════════════════════════════
-   BOOT — called when DOM is ready
-   ══════════════════════════════════════════════════════ */
+        <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div
 document.addEventListener('DOMContentLoaded', boot);
 </script>
 </body>
