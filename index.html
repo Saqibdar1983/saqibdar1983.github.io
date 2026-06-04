@@ -579,7 +579,7 @@
     .ats-emp-name { font-weight:600; font-size:12px; color:#0f172a; }
     .ats-emp-pos { font-size:10px; color:#64748b; }
     .ats-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
-    .ats-badge-done { background:#dcfce7; color:#166534; }
+    .ats-badge-done { background:#e5e7eb; color:#6b7280; }
     .ats-badge-pend { background:#fef3c7; color:#92400e; }
     .ats-badge-gen { background:#e0f2fe; color:#075985; }
     .ats-badge-per { background:#f3e8ff; color:#6b21a8; }
@@ -2583,12 +2583,13 @@ async function showAssignedTasksSummary() {
     } catch(e) { console.warn("ATS fetch error:", e); }
   }
 
-  /* Sort: pending first, then done; within each group by date desc */
-  tasks.sort((a, b) => {
-    const aD = (a.status === "completed" || a.status === "completed_with_comments") ? 1 : 0;
-    const bD = (b.status === "completed" || b.status === "completed_with_comments") ? 1 : 0;
-    return aD - bD;
-  });
+  /* Sort: pending first (newest assigned first), completed at bottom (newest completed first) */
+  const tsOf   = t => (t.createdAt   && t.createdAt.seconds)   ? t.createdAt.seconds   : (t.srNumber || 0);
+  const doneTs = t => (t.completedAt && t.completedAt.seconds) ? t.completedAt.seconds : (t.srNumber || 0);
+  const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
+  const pending_t = tasks.filter(t => !isDoneT(t)).sort((a,b) => tsOf(b) - tsOf(a));
+  const done_t    = tasks.filter(t => isDoneT(t)).sort((a,b) => doneTs(b) - doneTs(a));
+  tasks = [...pending_t, ...done_t];
 
   /* Build employee designation lookup map */
   const empMap = {};
@@ -2614,10 +2615,8 @@ async function showAssignedTasksSummary() {
         const taskText  = t.taskDescription || t.taskName || t.task || "—";
         const issued    = t.assignedDate || t.createdAt || "—";
         const doneDate  = isDone ? (t.completedDate || "—") : "—";
-        const rowStyle = isDone
-          ? 'background:#f0faf7;opacity:0.72;'
-          : '';
-        const textStyle = isDone ? 'color:#5a7a6e;' : '';
+        const rowStyle = isDone ? 'background:#f3f4f6;opacity:0.78;' : '';
+        const textStyle = isDone ? 'color:#9ca3af;' : '';
         return `<tr style="${rowStyle}">
           <td class="ats-sr">${i + 1}</td>
           <td style="max-width:180px;word-break:break-word;font-size:12px;line-height:1.4;${textStyle}">${esc(taskText)}</td>
@@ -2626,7 +2625,7 @@ async function showAssignedTasksSummary() {
           <td style="font-size:11px;white-space:nowrap;${textStyle}">${esc(issued)}</td>
           <td><span class="ats-badge ${isGeneral ? 'ats-badge-gen' : 'ats-badge-per'}">${isGeneral ? 'General' : 'Personal'}</span></td>
           <td><span class="ats-badge ${isDone ? 'ats-badge-done' : 'ats-badge-pend'}">${isDone ? '&#10003; Done' : '&#9200; Pending'}</span></td>
-          <td style="font-size:11px;color:${isDone ? '#16a34a' : '#94a3b8'};white-space:nowrap;">${isDone ? esc(doneDate) : '—'}</td>
+          <td style="font-size:11px;color:#9ca3af;white-space:nowrap;">${isDone ? esc(doneDate) : '—'}</td>
         </tr>`;
       }).join("");
 
@@ -4270,7 +4269,6 @@ function anPrint(empNum) {
   const w = window.open('', '_blank', 'width=860,height=1100');
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
 }
-
 /* ══════════════════════════════════════════════════════
    BOOT — called when DOM is ready
    ══════════════════════════════════════════════════════ */
