@@ -616,6 +616,11 @@
     .emp-prog-bg { background: #f1f5f9; height: 5px; border-radius: 3px; overflow: hidden; margin-top: 8px; }
     .emp-prog-fill { height: 100%; border-radius: 3px; }
     .emp-prog-lbl { display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; margin-top: 3px; }
+    .gen-prog-wrap { padding: 10px 12px 12px; background: #f0f6ff; border-radius: 10px; margin: 8px 0 4px; border: 1px solid #c7d9f5; }
+    .gen-prog-title { font-size: 10px; font-weight: 700; color: #185FA5; letter-spacing: .4px; margin-bottom: 5px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+    .gen-prog-bg { background: #d1dff5; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+    .gen-prog-fill { height: 100%; border-radius: 5px; transition: width .5s; }
+    .gen-prog-lbl { display: flex; justify-content: space-between; font-size: 10px; color: #475569; margin-top: 5px; font-weight: 500; }
 
     /* ===== PM PIN Modal — Professional Design ===== */
     .pm-modal-bg{
@@ -2904,6 +2909,7 @@ function goToAssignTasks() {
       <button onclick="openGeneralTaskPicker()" style="width:100%;padding:13px;background:#185FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.3px;">
         <i class="ti ti-users" style="font-size:18px;" aria-hidden="true"></i> Assign General Task (Whole Team)
       </button>
+      <div id="general-prog-container"></div>
     </div>
     <div id="emp-list" style="flex:1;overflow-y:auto;padding-bottom:70px;"><div class="loading-state"></div></div>`;
   refreshEmpList();
@@ -3274,6 +3280,12 @@ async function renderAssign(c) {
       </div>
     </div>
 
+    <div style="padding:10px 12px 4px;">
+      <button onclick="openGeneralTaskPicker()" style="width:100%;padding:13px;background:#185FA5;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.3px;">
+        <i class="ti ti-users" style="font-size:18px;" aria-hidden="true"></i> Assign General Task (Whole Team)
+      </button>
+      <div id="general-prog-container"></div>
+    </div>
     <div id="emp-list"><div class="loading-state"></div></div>`;
   await refreshEmpList();
 }
@@ -3291,23 +3303,28 @@ async function refreshEmpList() {
   }
 
   /* ── Fetch task counts for all employees in ONE query ── */
+  S._genTotal = 0; S._genDone = 0;
   if (FB_OK && S.employees.length) {
     try {
       const snap = await db.collection("tasks")
         .where("managerEmpNumber", "==", S.user.employmentNumber)
         .get();
       const allTasks = snap.docs.map(d => d.data());
+      const isDone = t => t.status === "completed" || t.status === "completed_with_comments";
+
+      // ── General tasks overall → feeds the General Task progress bar ──
+      const generalTasks = allTasks.filter(t => t.isGeneral === true);
+      S._genTotal = generalTasks.length;
+      S._genDone  = generalTasks.filter(isDone).length;
 
       S.employees.forEach(emp => {
-        // Personal tasks assigned directly to this employee
-        const personal = allTasks.filter(t => t.assignedToEmpNumber === emp.employmentNumber);
-        // General tasks assigned to their department
-        const general  = allTasks.filter(t => t.isGeneral === true && t.department === emp.department);
-        const combined = [...personal, ...general];
-        // Remove duplicates (a task can't be both, but just in case)
-        const unique   = combined.filter((t, idx, arr) => arr.findIndex(x => x === t) === idx);
-        emp._total = unique.length;
-        emp._done  = unique.filter(t => t.status === "completed" || t.status === "completed_with_comments").length;
+        // Personal tasks assigned directly to this employee (non-general only)
+        const personal = allTasks.filter(t => !t.isGeneral && t.assignedToEmpNumber === emp.employmentNumber);
+        // General tasks this specific employee completed (they claimed it)
+        const genClaimedByEmp = generalTasks.filter(t => isDone(t) && t.claimedByEmpNumber === emp.employmentNumber);
+        // Personal progress = personal tasks + general tasks this person completed
+        emp._total = personal.length + genClaimedByEmp.length;
+        emp._done  = personal.filter(isDone).length + genClaimedByEmp.length;
       });
     } catch(e) {
       console.warn("[DTM] Task count fetch error:", e);
@@ -3342,7 +3359,7 @@ async function refreshEmpList() {
           <div class="emp-prog-fill" style="width:${pct}%;background:${barColor};"></div>
         </div>
         <div class="emp-prog-lbl">
-          <span>${done}/${total} tasks</span>
+          <span>${done}/${total} personal</span>
           <span style="color:${barColor};font-weight:bold;">${pct}% done</span>
         </div>
         <div class="at-btns" style="margin-top:8px;">
@@ -3351,6 +3368,29 @@ async function refreshEmpList() {
       </div>`;
     }).join("") +
   `</div>`;
+
+  // ── Update General Task progress bar ──
+  const genProgEl = document.getElementById("general-prog-container");
+  if (genProgEl) {
+    const gTotal   = S._genTotal || 0;
+    const gDone    = S._genDone  || 0;
+    const gPending = gTotal - gDone;
+    const gPct     = gTotal > 0 ? Math.round((gDone / gTotal) * 100) : 0;
+    const gColor   = gPct >= 70 ? "#0F6E56" : (gPct >= 40 ? "#e6a817" : "#b33030");
+    genProgEl.innerHTML = gTotal > 0 ? `
+      <div class="gen-prog-wrap">
+        <div class="gen-prog-title">
+          <i class="ti ti-users" style="font-size:12px;"></i> General Task Progress
+        </div>
+        <div class="gen-prog-bg">
+          <div class="gen-prog-fill" style="width:${gPct}%;background:${gColor};"></div>
+        </div>
+        <div class="gen-prog-lbl">
+          <span>&#10003; ${gDone} completed &nbsp;&middot;&nbsp; &#9679; ${gPending} pending &nbsp;&middot;&nbsp; ${gTotal} total</span>
+          <span style="color:${gColor};font-weight:bold;">${gPct}%</span>
+        </div>
+      </div>` : "";
+  }
 }
 
 function openEmp(idx, isGeneral) {
