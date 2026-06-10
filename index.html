@@ -319,7 +319,7 @@
     .tc-bot { padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #f0f0f0; background: #fafafa; }
     .tc-status { font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 5px; }
     .tc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .tc-btns { display: flex; gap: 5px; }
+    .tc-btns { display: flex; gap: 5px; flex-wrap: wrap; }
     .tc-btn { font-size: 10px; font-weight: bold; padding: 5px 9px; border: none; border-radius: 5px; cursor: pointer; }
     .tc-btn-view { background: #f0f0f0; color: #333; }
     .tc-btn-view:hover { background: #e0e0e0; }
@@ -331,6 +331,10 @@
     .tc-btn-return:hover { background: #92400e; }
     .tc-btn-reassign { background: #185FA5; color: #fff; }
     .tc-btn-reassign:hover { background: #0c447c; }
+    .tc-btn-remind { background: #fff8e1; color: #92400e; border: 1.5px solid #f59e0b; }
+    .tc-btn-remind:hover { background: #fde68a; }
+    .tc-btn-delete { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
+    .tc-btn-delete:hover { background: #fecaca; }
     .tt-save-strip { padding: 12px; background: #f3f4f6; border-top: 1px solid #e5e7eb; }
     .tt-save-btn { width: 100%; padding: 13px; background: #0F6E56; color: #fff; border: none; border-radius: 7px; font-size: 14px; font-weight: bold; cursor: pointer; letter-spacing: .3px; }
     .tt-save-btn:hover { background: #085041; }
@@ -1179,13 +1183,13 @@ async function showBellNotifications(section, event) {
       body.innerHTML = '<div class="dtm-notif-empty">No new messages</div>';
       return;
     }
-    var typeLabel = { task_assigned:"New Task", task_assigned_general:"General Task", task_completed:"Task Completed", task_returned:"Task Returned" };
+    var typeLabel = { task_assigned:"New Task", task_assigned_general:"General Task", task_completed:"Task Completed", task_returned:"Task Returned", task_reminder:"⏰ Reminder" };
     var html = "";
     snap.forEach(function(doc) {
       var d = doc.data();
       var lbl   = typeLabel[d.type] || "Notification";
       var when  = d.createdAt ? new Date(d.createdAt.seconds * 1000).toLocaleString("en-GB", {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
-      var color = d.type === "task_completed" ? "#0F6E56" : d.type === "task_returned" ? "#b45309" : "#185FA5";
+      var color = d.type === "task_completed" ? "#0F6E56" : d.type === "task_returned" ? "#b45309" : d.type === "task_reminder" ? "#d97706" : "#185FA5";
       html += '<div class="dtm-notif-item">'
         + '<div class="dtm-notif-from" style="color:' + color + '">' + esc(d.fromName || "System") + ' &nbsp;&mdash;&nbsp; ' + lbl + '</div>'
         + '<div class="dtm-notif-msg">' + esc(d.taskTitle || "No details") + '</div>'
@@ -3538,7 +3542,9 @@ function drawTaskTable(b) {
       ? `<button class="tc-btn tc-btn-view" onclick="viewEmpTaskDetail('${t.id}')">View</button>`
       : `<button class="tc-btn tc-btn-view" onclick="viewEmpTaskDetail('${t.id}')">View</button>
          <button class="tc-btn tc-btn-done" onclick="mgComplete('${t.id}','completed')">✓ Done</button>
-         <button class="tc-btn tc-btn-cmt"  onclick="mgCompleteComment('${t.id}')">✓+ Comment</button>`);
+         <button class="tc-btn tc-btn-cmt"  onclick="mgCompleteComment('${t.id}')">✓+ Comment</button>
+         <button class="tc-btn tc-btn-remind" onclick="mgRemindTask('${t.id}')" title="Send reminder notification to worker"><i class="ti ti-bell-ringing" style="font-size:15px;vertical-align:-2px;margin-right:3px;"></i>Remind</button>
+         <button class="tc-btn tc-btn-delete" onclick="mgDeleteTask('${t.id}')" title="Delete this task"><i class="ti ti-trash" style="font-size:14px;vertical-align:-2px;margin-right:3px;"></i>Delete</button>`);
 
     const urgentClass = t.isHighPriority && !isDone && !isNew ? " tc-card-urgent" : "";
     return `<div class="tc-card${isNew ? " new-card" : ""}${urgentClass}${isDone ? '" style="background:#f3f4f6;opacity:0.78;' : ''}">
@@ -3640,6 +3646,59 @@ async function mgSubmitComment(taskId) {
   const ok = await fsCompleteTask(taskId, "completed_with_comments", cmt);
   toast(ok ? "Task completed with comments ✓" : "Error — check connection");
   if (ok) await refreshTaskTbl();
+}
+
+/* ─── Remind Task (manager → sends bell notification to worker, task unchanged) ─── */
+async function mgRemindTask(taskId) {
+  const t = S.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  const empNum  = S.selEmp ? S.selEmp.employmentNumber : t.assignedToEmpNumber;
+  const empName = S.selEmp ? S.selEmp.name : "Worker";
+  if (!empNum) { toast("Cannot find worker — try refreshing"); return; }
+  // Fire notification to worker — task document is NOT modified (dates preserved)
+  await fsWriteNotification(empNum, "my_tasks", "task_reminder", t.taskDescription, S.user.name);
+  toast("⏰ Reminder sent to " + empName);
+}
+
+/* ─── Delete Task (manager only, pending tasks only, password protected) ─── */
+function mgDeleteTask(taskId) {
+  const t = S.tasks.find(x => x.id === taskId);
+  if (!t) { toast("Task not found"); return; }
+  showOverlay(modal("🗑 Delete Task — Confirm",
+    `<div style="background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+       <div style="color:#991b1b;font-size:12px;font-weight:700;margin-bottom:4px;">⚠️ This will permanently delete:</div>
+       <div style="color:#1f2937;font-size:13px;font-style:italic;">"${esc(t.taskDescription)}"</div>
+     </div>
+     <div class="form-group">
+       <label class="form-label">Enter Upload Password to confirm</label>
+       <input class="form-input" id="del-pwd" type="password" placeholder="Your upload password"
+              onkeypress="if(event.key==='Enter')confirmMgDeleteTask('${taskId}')">
+     </div>
+     <div id="del-err" style="color:#b33030;font-size:12px;display:none;margin-top:4px;">❌ Incorrect password. Deletion blocked.</div>`,
+    `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>
+     <button class="btn" style="background:#b33030;color:#fff;border:none;" onclick="confirmMgDeleteTask('${taskId}')"><i class="ti ti-trash"></i> Confirm Delete</button>`
+  ));
+  setTimeout(() => document.getElementById("del-pwd")?.focus(), 80);
+}
+
+async function confirmMgDeleteTask(taskId) {
+  const pwd = document.getElementById("del-pwd")?.value || "";
+  if (pwd !== getUploadPwd()) {
+    const err = document.getElementById("del-err");
+    if (err) err.style.display = "block";
+    const inp = document.getElementById("del-pwd");
+    if (inp) inp.value = "";
+    return;
+  }
+  closeOverlay();
+  try {
+    await db.collection("tasks").doc(taskId).delete();
+    toast("Task deleted ✓");
+    await refreshTaskTbl();
+  } catch(e) {
+    toast("Delete failed — check connection");
+    console.warn("[DTM] Delete task error:", e);
+  }
 }
 
 /* ════════════════════════════════════════════════════
