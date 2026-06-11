@@ -2154,19 +2154,32 @@ function renderProfileSetup(prefill) {
     </div>`;
 }
 
-/* Photo upload handler */
+/* Photo upload handler — compresses to max 400×400 JPEG to keep storage small */
 function onPhotoSelect() {
   const input = document.getElementById("photo-input");
   if (!input || !input.files || !input.files[0]) return;
   const file = input.files[0];
-  if (file.size > 3 * 1024 * 1024) { toast("Photo too large — please use an image under 3 MB"); return; }
+  if (file.size > 5 * 1024 * 1024) { toast("Photo too large — please use an image under 5 MB"); return; }
   const reader = new FileReader();
   reader.onload = function(e) {
-    const base64 = e.target.result;
-    window._profilePhotoBase64 = base64;
-    const circle = document.getElementById("da-photo-circle");
-    if (circle) circle.innerHTML = `<img src="${base64}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;">`;
-    toast("Photo selected ✓ — save profile to keep it");
+    const img = new Image();
+    img.onload = function() {
+      /* Resize to max 400px on longest side, then compress as JPEG 0.78 */
+      const MAX = 400;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+      else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL("image/jpeg", 0.78);
+      window._profilePhotoBase64 = compressed;
+      const circle = document.getElementById("da-photo-circle");
+      if (circle) circle.innerHTML = `<img src="${compressed}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;">`;
+      toast("Photo selected ✓ — save profile to keep it");
+    };
+    img.onerror = function() { toast("Could not read photo — try a different image"); };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
@@ -2249,9 +2262,9 @@ async function saveProfile() {
         }
       }
     }
-    localStorage.setItem("dtm_user_v1", JSON.stringify(profile));
     S.user = profile;
-    if (FB_OK) { try { fsSetUser(profile); } catch(e) { console.error(e); } }
+    try { localStorage.setItem("dtm_user_v1", JSON.stringify(profile)); } catch(e) { console.warn("[DTM] localStorage write failed:", e); }
+    if (FB_OK) { try { await fsSetUser(profile); } catch(e) { console.error("[DTM] Firestore save failed:", e); } }
     renderApp();
   }
   if (profile.role === 'PM') {
@@ -2320,7 +2333,7 @@ function renderApp() {
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
-  const companyName = esc((S.project && S.project.companyName) || CFG.COMPANY);
+  const companyName = esc((S.project && S.project.companyName) || (S.user && S.user.companyName) || "");
   const avatarInner = S.user.photoBase64
     ? `<img src="${S.user.photoBase64}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">`
     : getInitials(S.user.name);
@@ -2670,7 +2683,7 @@ async function showMyTasksSummary() {
    ════════════════════════════════════════════════════ */
 async function showAssignedTasksSummary() {
   const projName   = S.project?.projectName  || S.user?.projectName  || "—";
-  const compName   = S.project?.companyName   || S.user?.companyName  || "IHCC";
+  const compName   = S.project?.companyName   || S.user?.companyName  || "";
   const mgrName    = S.user?.name             || "Manager";
   const teamCount  = S.employees?.length      || 0;
 
@@ -2814,6 +2827,23 @@ async function doLogout() {
   window.location.reload(true);
 }
 
+function openEditProjectSetup() {
+  /* Ensure S.project is populated from S.user fields before opening project edit form.
+     Fixes: project data appearing empty when user presses Edit → Project Details. */
+  if ((!S.project || !S.project.companyName) && S.user) {
+    S.project = {
+      companyName    : S.user.companyName     || "",
+      companyType    : S.user.companyType     || "",
+      projectName    : S.user.projectName     || "",
+      projectCode    : S.user.projectCode     || "",
+      country        : S.user.country         || "",
+      projectLocation: S.user.projectLocation || "",
+      projectType    : S.user.projectType     || "",
+    };
+  }
+  renderProjectSetup(S.project);
+}
+
 function editProfile() {
   /* Show a small bottom-sheet with 2 options: Edit Profile or Edit Project */
   const existing = document.getElementById("edit-sheet");
@@ -2835,7 +2865,7 @@ function editProfile() {
       </div>
       <i class="ti ti-arrow-right" style="margin-left:auto;color:#94a3b8;font-size:16px;" aria-hidden="true"></i>
     </button>
-    <button onclick="document.getElementById('edit-sheet').remove(); renderProjectSetup(S.project);"
+    <button onclick="document.getElementById('edit-sheet').remove(); openEditProjectSetup();"
       style="width:100%;padding:14px;background:#f1f5f9;border:none;border-radius:11px;display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:10px;">
       <div style="width:40px;height:40px;background:#0c447c;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <i class="ti ti-building" style="color:#fff;font-size:20px;" aria-hidden="true"></i>
@@ -3695,6 +3725,14 @@ async function confirmMgDeleteTask(taskId) {
     await db.collection("tasks").doc(taskId).delete();
     toast("Task deleted ✓");
     await refreshTaskTbl();
+    // Recalculate employee card stats immediately so team screen shows correct count
+    if (S.selEmp) {
+      const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
+      const personalLeft  = S.tasks.filter(t => !t.isGeneral && t.assignedToEmpNumber === S.selEmp.employmentNumber);
+      const genClaimedLeft = S.tasks.filter(t => t.isGeneral && isDoneT(t) && t.claimedByEmpNumber === S.selEmp.employmentNumber);
+      S.selEmp._total = personalLeft.length + genClaimedLeft.length;
+      S.selEmp._done  = personalLeft.filter(isDoneT).length + genClaimedLeft.length;
+    }
   } catch(e) {
     toast("Delete failed — check connection");
     console.warn("[DTM] Delete task error:", e);
@@ -4511,7 +4549,7 @@ function anPrint(empNum) {
     .sig-lbl{font-size:10px;color:#64748b}.sig-space{height:30px}
     .footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;text-align:center;font-size:9px;color:#94a3b8}
   </style></head><body>
-  <div class="hdr"><div><div class="hdr-title">${esc(S.project?.companyName||'IHCC')}</div><div class="hdr-sub">Performance Evaluation Report</div></div><div class="hdr-right">${today}<br>${esc(city)}</div></div>
+  <div class="hdr"><div><div class="hdr-title">${esc(S.project?.companyName || S.user?.companyName || '')}</div><div class="hdr-sub">Performance Evaluation Report</div></div><div class="hdr-right">${today}<br>${esc(city)}</div></div>
   <div class="wrap" style="padding:10px 16px">
     <div class="sec"><div class="sec-title">Employee Information</div>
       <div class="info-grid">
@@ -4552,7 +4590,7 @@ function anPrint(empNum) {
       <div class="sig-box"><div class="sig-lbl">Date</div><div class="sig-space"></div><div style="font-size:11px">${today}</div></div>
       <div class="sig-box"><div class="sig-lbl">HR / Authorized</div><div class="sig-space"></div></div>
     </div>
-    <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName||'IHCC')} &nbsp;·&nbsp; Confidential</div>
+    <div class="footer">Daily Task Manager &nbsp;·&nbsp; DTM-V-01 &nbsp;·&nbsp; ${esc(S.project?.companyName || S.user?.companyName || '')} &nbsp;·&nbsp; Confidential</div>
   </div></body></html>`;
   const w = window.open('', '_blank', 'width=860,height=1100');
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
