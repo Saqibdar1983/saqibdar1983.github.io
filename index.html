@@ -2850,25 +2850,44 @@ async function doLogout() {
 }
 
 function openEditProjectSetup() {
-  /* Ensure S.project has all fields before opening the edit form.
-     Priority: 1) S.project if already good  2) localStorage  3) S.user fields */
-  if (!S.project || !S.project.companyName) {
-    try {
-      var _lp = JSON.parse(localStorage.getItem("dtm_project_v1") || "null");
-      if (_lp && _lp.companyName) { S.project = _lp; }
-    } catch(e) {}
+  /* Build the best possible prefill for the project edit form.
+     Never replace a field that already has a value — only fill blanks.
+     Sources in priority order: S.project → localStorage → S.user */
+  var proj = {};
+  /* Start with S.project (whatever Firebase / boot loaded) */
+  if (S.project) {
+    proj.companyName     = S.project.companyName     || "";
+    proj.companyType     = S.project.companyType     || "";
+    proj.projectName     = S.project.projectName     || "";
+    proj.projectCode     = S.project.projectCode     || "";
+    proj.country         = S.project.country         || "";
+    proj.projectLocation = S.project.projectLocation || "";
+    proj.projectType     = S.project.projectType     || "";
   }
-  if ((!S.project || !S.project.companyName) && S.user) {
-    S.project = {
-      companyName    : S.user.companyName     || "",
-      companyType    : S.user.companyType     || "",
-      projectName    : S.user.projectName     || "",
-      projectCode    : S.user.projectCode     || "",
-      country        : S.user.country         || "",
-      projectLocation: S.user.projectLocation || "",
-      projectType    : S.user.projectType     || "",
-    };
+  /* Fill any blank fields from localStorage */
+  try {
+    var _lp = JSON.parse(localStorage.getItem("dtm_project_v1") || "null");
+    if (_lp) {
+      if (!proj.companyName)     proj.companyName     = _lp.companyName     || "";
+      if (!proj.companyType)     proj.companyType     = _lp.companyType     || "";
+      if (!proj.projectName)     proj.projectName     = _lp.projectName     || "";
+      if (!proj.projectCode)     proj.projectCode     = _lp.projectCode     || "";
+      if (!proj.country)         proj.country         = _lp.country         || "";
+      if (!proj.projectLocation) proj.projectLocation = _lp.projectLocation || "";
+      if (!proj.projectType)     proj.projectType     = _lp.projectType     || "";
+    }
+  } catch(e) {}
+  /* Fill any still-blank fields from S.user (Firestore has projectName at minimum) */
+  if (S.user) {
+    if (!proj.companyName)     proj.companyName     = S.user.companyName     || "";
+    if (!proj.companyType)     proj.companyType     = S.user.companyType     || "";
+    if (!proj.projectName)     proj.projectName     = S.user.projectName     || "";
+    if (!proj.projectCode)     proj.projectCode     = S.user.projectCode     || "";
+    if (!proj.country)         proj.country         = S.user.country         || "";
+    if (!proj.projectLocation) proj.projectLocation = S.user.projectLocation || "";
+    if (!proj.projectType)     proj.projectType     = S.user.projectType     || "";
   }
+  S.project = proj;
   renderProjectSetup(S.project);
 }
 
