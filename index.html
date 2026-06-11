@@ -1597,16 +1597,28 @@ async function loadFirebaseAndInit() {
         .then(function(snap) {
           if (!snap.empty) {
             S.user = snap.docs[0].data();
-            if (S.user.companyName || S.user.projectName) {
-              S.project = {
-                companyName    : S.user.companyName     || "",
-                projectName    : S.user.projectName     || "",
-                projectCode    : S.user.projectCode     || "",
-                country        : S.user.country         || "",
-                projectLocation: S.user.projectLocation || "",
-                projectType    : S.user.projectType     || "",
-                companyType    : S.user.companyType     || "",
-              };
+            /* Build S.project — never overwrite good localStorage data with empty Firestore data.
+               companyName is only in localStorage (saveProfile never wrote project fields to Firestore).
+               Fix: merge Firestore data but keep localStorage companyName if Firestore has none. */
+            var _lsProj = null;
+            try { _lsProj = JSON.parse(localStorage.getItem("dtm_project_v1") || "null"); } catch(e) {}
+            var _fsProj = (S.user.companyName || S.user.projectName) ? {
+              companyName    : S.user.companyName     || "",
+              projectName    : S.user.projectName     || "",
+              projectCode    : S.user.projectCode     || "",
+              country        : S.user.country         || "",
+              projectLocation: S.user.projectLocation || "",
+              projectType    : S.user.projectType     || "",
+              companyType    : S.user.companyType     || "",
+            } : null;
+            if (_fsProj && _fsProj.companyName) {
+              S.project = _fsProj;                        /* Firestore has company name — use it */
+            } else if (_lsProj && _lsProj.companyName) {
+              S.project = _lsProj;                        /* localStorage is better — keep it */
+            } else if (_fsProj) {
+              S.project = _fsProj;                        /* Firestore data only, no company name */
+            } else if (_lsProj) {
+              S.project = _lsProj;                        /* localStorage only */
             }
             localStorage.setItem("dtm_user_v1", JSON.stringify(S.user));
             if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
@@ -2262,6 +2274,16 @@ async function saveProfile() {
         }
       }
     }
+    /* Merge project fields into profile so Firestore always has company/project data.
+       Fixes: companyName not in Firestore → Firebase rebuild wipes company from dashboard. */
+    if (S.project) {
+      if (S.project.companyName)     profile.companyName     = S.project.companyName;
+      if (S.project.companyType)     profile.companyType     = S.project.companyType;
+      if (S.project.projectCode)     profile.projectCode     = S.project.projectCode;
+      if (S.project.country)         profile.country         = S.project.country;
+      if (S.project.projectLocation) profile.projectLocation = S.project.projectLocation;
+      if (S.project.projectType)     profile.projectType     = S.project.projectType;
+    }
     S.user = profile;
     try { localStorage.setItem("dtm_user_v1", JSON.stringify(profile)); } catch(e) { console.warn("[DTM] localStorage write failed:", e); }
     if (FB_OK) { try { await fsSetUser(profile); } catch(e) { console.error("[DTM] Firestore save failed:", e); } }
@@ -2828,8 +2850,14 @@ async function doLogout() {
 }
 
 function openEditProjectSetup() {
-  /* Ensure S.project is populated from S.user fields before opening project edit form.
-     Fixes: project data appearing empty when user presses Edit → Project Details. */
+  /* Ensure S.project has all fields before opening the edit form.
+     Priority: 1) S.project if already good  2) localStorage  3) S.user fields */
+  if (!S.project || !S.project.companyName) {
+    try {
+      var _lp = JSON.parse(localStorage.getItem("dtm_project_v1") || "null");
+      if (_lp && _lp.companyName) { S.project = _lp; }
+    } catch(e) {}
+  }
   if ((!S.project || !S.project.companyName) && S.user) {
     S.project = {
       companyName    : S.user.companyName     || "",
