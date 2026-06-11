@@ -2352,6 +2352,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
+  const APP_VER = "v1.0.4";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -2359,6 +2360,18 @@ function renderApp() {
   const avatarInner = S.user.photoBase64
     ? `<img src="${S.user.photoBase64}" style="width:100%;height:100%;object-fit:cover;" alt="Photo">`
     : getInitials(S.user.name);
+  /* Recovery banner — shown only when company name is missing */
+  const missingCompanyBanner = !companyName ? `
+    <div onclick="document.getElementById('edit-sheet')?.remove(); openEditProjectSetup();"
+      style="background:#fff3cd;border:1.5px solid #f59e0b;border-radius:10px;padding:10px 14px;
+             margin:0 12px 10px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <i class="ti ti-alert-triangle" style="font-size:20px;color:#b45309;flex-shrink:0;"></i>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#92400e;">Company name is missing</div>
+        <div style="font-size:11px;color:#78350f;margin-top:2px;">Tap here to restore your project details — takes 30 seconds</div>
+      </div>
+      <i class="ti ti-chevron-right" style="font-size:16px;color:#b45309;margin-left:auto;"></i>
+    </div>` : "";
 
   document.getElementById("app").innerHTML = `
     <!-- Teal header -->
@@ -2366,7 +2379,7 @@ function renderApp() {
       <div style="text-align:center;margin-bottom:16px;">
         <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;letter-spacing:5px;color:rgba(255,255,255,0.65);text-transform:uppercase;font-weight:700;margin-bottom:8px;">&#x2014;&nbsp;&nbsp;HOME PAGE&nbsp;&nbsp;&#x2014;</div>
         <div style="font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:900;color:#fff;letter-spacing:4px;text-transform:uppercase;line-height:1.2;text-shadow:0 2px 10px rgba(0,0,0,0.3);">DAILY TASK<br>MANAGER</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:4px;margin-top:8px;font-family:monospace;font-weight:700;">DTM-V-01</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.45);letter-spacing:4px;margin-top:8px;font-family:monospace;font-weight:700;">DTM-V-01 &nbsp;·&nbsp; ${APP_VER}</div>
       </div>
       <div class="hs-hdr-top">
         <div>
@@ -2391,6 +2404,7 @@ function renderApp() {
 
     <!-- Body slides up over header -->
     <div class="hs-body">
+      ${missingCompanyBanner}
       <!-- Overall Summary: My Tasks + Team Tasks + All Pending -->
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px 6px;">
         <div class="hs-sec-lbl" style="margin:0;font-size:11px;color:#64748b;letter-spacing:.5px;text-transform:uppercase;">Overall Summary</div>
