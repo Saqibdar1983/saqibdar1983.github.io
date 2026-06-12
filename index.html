@@ -1874,8 +1874,9 @@ function saveProjectDetails() {
   localStorage.setItem("dtm_project_v1", JSON.stringify(project));
   S.project = project;
   toast("Company & Project saved ✓");
-  /* Move to Step 2 — personal profile */
-  renderProfileSetup();
+  /* Move to Step 2 — personal profile.
+     Pass S.user as prefill so existing users see their data pre-filled, not a blank form. */
+  renderProfileSetup(S.user || null);
 }
 
 /* ════════════════════════════════════════════════════
