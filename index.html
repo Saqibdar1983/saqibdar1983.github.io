@@ -2353,7 +2353,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.0.7";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.0.8";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -3783,12 +3783,14 @@ function viewEmpTaskDetail(taskId) {
 }
 
 async function mgComplete(taskId, status) {
+  if (S.isGeneral) { showEmpSelectorForComplete(taskId, status); return; }
   const ok = await fsCompleteTask(taskId, status, "");
   toast(ok ? "Task marked complete ✓" : "Error — check connection");
   if (ok) await refreshTaskTbl();
 }
 
 async function mgCompleteComment(taskId) {
+  if (S.isGeneral) { showEmpSelectorForComplete(taskId, 'comment'); return; }
   showOverlay(modal("Complete with Comments",
     `<div class="form-group">
        <label class="form-label">Employee Remarks</label>
@@ -3806,6 +3808,72 @@ async function mgSubmitComment(taskId) {
   const ok = await fsCompleteTask(taskId, "completed_with_comments", cmt);
   toast(ok ? "Task completed with comments ✓" : "Error — check connection");
   if (ok) await refreshTaskTbl();
+}
+
+/* ─── Employee Selector — complete General Task on behalf of a team member ─── */
+function showEmpSelectorForComplete(taskId, mode) {
+  const emps = S.employees || [];
+  if (!emps.length) { toast("No team members found — try refreshing"); return; }
+  const empBtns = emps.map((e, i) =>
+    `<button onclick="mgEmpSelected('${taskId}','${mode}',${i})"
+       style="width:100%;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;cursor:pointer;">
+       <div style="font-size:13px;font-weight:600;color:#0f172a;">${esc(e.name)}</div>
+       <div style="font-size:11px;color:#64748b;margin-top:2px;">${esc(e.designation || e.department || '')}</div>
+     </button>`
+  ).join("");
+  showOverlay(modal("&#128100; Who completed this task?",
+    `<div style="font-size:12px;color:#064e3b;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;padding:8px 12px;margin-bottom:12px;">
+       Select the team member who actually did this task. Credit goes fully to them.
+     </div>
+     <div style="display:flex;flex-direction:column;gap:8px;">${empBtns}</div>`,
+    `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>`
+  ));
+}
+
+async function mgEmpSelected(taskId, mode, empIdx) {
+  const emp = (S.employees || [])[empIdx];
+  if (!emp) { toast("Employee not found — please refresh"); closeOverlay(); return; }
+  if (mode === 'comment') {
+    closeOverlay();
+    showOverlay(modal("&#10003;+ Complete with Comments",
+      `<div style="font-size:12px;background:#E1F5EE;border-radius:6px;padding:8px 12px;margin-bottom:12px;color:#085041;">
+         Crediting to: <strong>${esc(emp.name)}</strong>
+       </div>
+       <div class="form-group">
+         <label class="form-label">Remarks / Comments</label>
+         <textarea class="form-input" id="cmt-txt" rows="4" placeholder="Write remarks about this task..."></textarea>
+       </div>`,
+      `<button class="btn btn-grey" onclick="closeOverlay()">Cancel</button>
+       <button class="btn btn-dark" onclick="mgSubmitEmpComment('${taskId}',${empIdx})">Submit</button>`
+    ));
+    setTimeout(() => document.getElementById("cmt-txt")?.focus(), 80);
+    return;
+  }
+  closeOverlay();
+  await mgCompleteAsEmp(taskId, 'completed', emp, '');
+}
+
+async function mgSubmitEmpComment(taskId, empIdx) {
+  const emp = (S.employees || [])[empIdx];
+  const cmt = (document.getElementById("cmt-txt")?.value || "").trim();
+  closeOverlay();
+  if (!emp) { toast("Employee not found — please refresh"); return; }
+  await mgCompleteAsEmp(taskId, 'completed_with_comments', emp, cmt);
+}
+
+async function mgCompleteAsEmp(taskId, status, emp, cmt) {
+  const ok = await fsCompleteTask(taskId, status, cmt);
+  if (!ok) { toast("Error — check connection"); return; }
+  try {
+    await db.collection("tasks").doc(taskId).update({
+      claimedByEmpNumber  : emp.employmentNumber,
+      claimedByName       : emp.name,
+      completedByEmpNumber: emp.employmentNumber,
+      completedByName     : emp.name,
+    });
+  } catch(e) { console.error("Attribution update failed:", e); }
+  toast("✓ Task credited to " + emp.name);
+  await refreshTaskTbl();
 }
 
 /* ─── Remind Task (manager → sends bell notification to worker, task unchanged) ─── */
