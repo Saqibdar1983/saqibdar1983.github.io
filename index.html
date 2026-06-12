@@ -2353,7 +2353,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.0.8";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.0.9";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -3785,8 +3785,19 @@ function viewEmpTaskDetail(taskId) {
 async function mgComplete(taskId, status) {
   if (S.isGeneral) { showEmpSelectorForComplete(taskId, status); return; }
   const ok = await fsCompleteTask(taskId, status, "");
-  toast(ok ? "Task marked complete ✓" : "Error — check connection");
-  if (ok) await refreshTaskTbl();
+  if (!ok) { toast("Error — check connection"); return; }
+  /* Auto-credit the assigned employee — not the manager */
+  const t = S.tasks.find(x => x.id === taskId);
+  if (t && t.assignedToEmpNumber) {
+    try {
+      await db.collection("tasks").doc(taskId).update({
+        completedByEmpNumber: t.assignedToEmpNumber,
+        completedByName     : t.assignedToName || t.assignedToEmpNumber,
+      });
+    } catch(e) { console.error("Auto-credit update failed:", e); }
+  }
+  toast("Task marked complete ✓");
+  await refreshTaskTbl();
 }
 
 async function mgCompleteComment(taskId) {
@@ -3806,8 +3817,19 @@ async function mgSubmitComment(taskId) {
   const cmt = (document.getElementById("cmt-txt")?.value || "").trim();
   closeOverlay();
   const ok = await fsCompleteTask(taskId, "completed_with_comments", cmt);
-  toast(ok ? "Task completed with comments ✓" : "Error — check connection");
-  if (ok) await refreshTaskTbl();
+  if (!ok) { toast("Error — check connection"); return; }
+  /* Auto-credit the assigned employee — not the manager */
+  const t = S.tasks.find(x => x.id === taskId);
+  if (t && t.assignedToEmpNumber) {
+    try {
+      await db.collection("tasks").doc(taskId).update({
+        completedByEmpNumber: t.assignedToEmpNumber,
+        completedByName     : t.assignedToName || t.assignedToEmpNumber,
+      });
+    } catch(e) { console.error("Auto-credit update failed:", e); }
+  }
+  toast("Task completed with comments ✓");
+  await refreshTaskTbl();
 }
 
 /* ─── Employee Selector — complete General Task on behalf of a team member ─── */
