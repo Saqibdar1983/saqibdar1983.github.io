@@ -912,21 +912,37 @@ async function fsGetEmployees(managerName) {
 
 async function fsGetTasksForEmp(empNumber, isGeneral, managerName, dept) {
   if (!FB_OK) return [];
-  let q;
   if (isGeneral) {
-    q = db.collection("tasks")
+    /* General task view — load all general tasks for this dept */
+    const snap = await db.collection("tasks")
       .where("isGeneral",   "==", true)
       .where("managerName", "==", managerName)
-      .where("department",  "==", dept);
+      .where("department",  "==", dept)
+      .get();
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rows.sort((a, b) => (a.srNumber || 0) - (b.srNumber || 0));
+    return rows;
   } else {
-    q = db.collection("tasks")
-      .where("assignedToEmpNumber", "==", empNumber)
-      .where("isGeneral",           "==", false);
+    /* Personal task view — personal tasks + completed general tasks this person claimed */
+    const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
+    const [persSnap, genSnap] = await Promise.all([
+      db.collection("tasks")
+        .where("assignedToEmpNumber", "==", empNumber)
+        .where("isGeneral",           "==", false)
+        .get(),
+      db.collection("tasks")
+        .where("claimedByEmpNumber",  "==", empNumber)
+        .get()
+    ]);
+    const persRows = persSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    /* Only COMPLETED general tasks — shown as read-only copies with "General" badge */
+    const genRows  = genSnap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(t => t.isGeneral === true && isDoneT(t));
+    const rows = [...persRows, ...genRows];
+    rows.sort((a, b) => (a.srNumber || 0) - (b.srNumber || 0));
+    return rows;
   }
-  const snap = await q.get();
-  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  rows.sort((a, b) => (a.srNumber || 0) - (b.srNumber || 0));
-  return rows;
 }
 
 async function fsGetMyTasks() {
@@ -2353,7 +2369,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.0.9";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.0";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -3487,8 +3503,8 @@ async function refreshEmpList() {
         // General tasks this specific employee completed (they claimed it)
         const genClaimedByEmp = generalTasks.filter(t => isDone(t) && t.claimedByEmpNumber === emp.employmentNumber);
         // Personal progress = personal tasks + general tasks this person completed
-        emp._total = personal.length;                                        /* personal only */
-        emp._done  = personal.filter(isDone).length;                        /* personal only */
+        emp._total = personal.length + genClaimedByEmp.length;
+        emp._done  = personal.filter(isDone).length + genClaimedByEmp.length;
       });
     } catch(e) {
       console.warn("[DTM] Task count fetch error:", e);
@@ -3950,8 +3966,8 @@ async function confirmMgDeleteTask(taskId) {
       const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
       const personalLeft  = S.tasks.filter(t => !t.isGeneral && t.assignedToEmpNumber === S.selEmp.employmentNumber);
       const genClaimedLeft = S.tasks.filter(t => t.isGeneral && isDoneT(t) && t.claimedByEmpNumber === S.selEmp.employmentNumber);
-      S.selEmp._total = personalLeft.length;                                /* personal only */
-      S.selEmp._done  = personalLeft.filter(isDoneT).length;                /* personal only */
+      S.selEmp._total = personalLeft.length + genClaimedLeft.length;
+      S.selEmp._done  = personalLeft.filter(isDoneT).length + genClaimedLeft.length;
     }
   } catch(e) {
     toast("Delete failed — check connection");
