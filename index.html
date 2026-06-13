@@ -3487,8 +3487,8 @@ async function refreshEmpList() {
         // General tasks this specific employee completed (they claimed it)
         const genClaimedByEmp = generalTasks.filter(t => isDone(t) && t.claimedByEmpNumber === emp.employmentNumber);
         // Personal progress = personal tasks + general tasks this person completed
-        emp._total = personal.length + genClaimedByEmp.length;
-        emp._done  = personal.filter(isDone).length + genClaimedByEmp.length;
+        emp._total = personal.length;                                        /* personal only */
+        emp._done  = personal.filter(isDone).length;                        /* personal only */
       });
     } catch(e) {
       console.warn("[DTM] Task count fetch error:", e);
@@ -3950,8 +3950,8 @@ async function confirmMgDeleteTask(taskId) {
       const isDoneT = t => t.status === "completed" || t.status === "completed_with_comments";
       const personalLeft  = S.tasks.filter(t => !t.isGeneral && t.assignedToEmpNumber === S.selEmp.employmentNumber);
       const genClaimedLeft = S.tasks.filter(t => t.isGeneral && isDoneT(t) && t.claimedByEmpNumber === S.selEmp.employmentNumber);
-      S.selEmp._total = personalLeft.length + genClaimedLeft.length;
-      S.selEmp._done  = personalLeft.filter(isDoneT).length + genClaimedLeft.length;
+      S.selEmp._total = personalLeft.length;                                /* personal only */
+      S.selEmp._done  = personalLeft.filter(isDoneT).length;                /* personal only */
     }
   } catch(e) {
     toast("Delete failed — check connection");
