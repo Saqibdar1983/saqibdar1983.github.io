@@ -1260,9 +1260,13 @@ async function fsGetAnalytics(managerName) {
   const today = new Date().toISOString().split("T")[0];
 
   return emps.map(emp => {
-    const et        = tasks.filter(t => t.isGeneral || t.assignedToEmpNumber === emp.employmentNumber);
+    /* Personal tasks assigned directly + general tasks this employee claimed and completed */
+    const et = tasks.filter(t =>
+      (!t.isGeneral && t.assignedToEmpNumber === emp.employmentNumber) ||
+      (t.isGeneral  && t.claimedByEmpNumber  === emp.employmentNumber)
+    );
     const completed = et.filter(t => t.status === "completed" || t.status === "completed_with_comments");
-    const pending   = et.filter(t => t.status === "pending");
+    const pending   = et.filter(t => t.status === "pending" || t.status === "returned");
     const overdue   = pending.filter(t => t.targetCompletionDate && t.targetCompletionDate < today);
     const efficiency = et.length ? Math.round((completed.length / et.length) * 100) : 0;
     return { emp, total: et.length, completed: completed.length, pending: pending.length, overdue: overdue.length, efficiency, tasks: et };
@@ -2369,7 +2373,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.0";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.1";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -4451,7 +4455,7 @@ function anDemoTasks(emp, done, pend) {
 /* ════════════════════════════════════════════════════
    ANALYTICS — PAGE 1: TEAM LIST
    ════════════════════════════════════════════════════ */
-function renderAnalytics(c) {
+async function renderAnalytics(c) {
   if (!S.anLoggedIn) {
     c.innerHTML = `
       <div class="analytics-login-wrap">
@@ -4470,10 +4474,18 @@ function renderAnalytics(c) {
       </div>`;
     return;
   }
-  anRenderTeamList(c);
+  await anRenderTeamList(c);
 }
 
-function anRenderTeamList(c) {
+async function anRenderTeamList(c) {
+  /* Auto-fetch real Firebase data if not yet loaded */
+  if (FB_OK && (!S.anData || !S.anData.length)) {
+    c.innerHTML = `<div style="text-align:center;padding:48px 20px;">
+      <div class="loading-state"></div>
+      <div style="font-size:12px;color:#64748b;margin-top:14px;font-weight:600;">Loading analytics data…</div>
+    </div>`;
+    try { S.anData = await fsGetAnalytics(S.user.name); } catch(e) { console.warn("[DTM] Analytics load:", e); }
+  }
   const data = anGetEmpData();
   data.sort((a, b) => b.efficiency - a.efficiency);
   const pmBanner = isPM()
@@ -4580,11 +4592,10 @@ function anLogout() {
 
 async function anRefresh() {
   if (FB_OK) {
-    const data = await fsGetAnalytics(S.user.name);
-    S.anData = data;
+    S.anData = [];   /* clear so anRenderTeamList re-fetches fresh */
   }
   const c = document.getElementById("analytics-body");
-  if (c) anRenderTeamList(c);
+  if (c) await anRenderTeamList(c);
 }
 
 /* ════════════════════════════════════════════════════
@@ -4611,9 +4622,22 @@ function anOpenEmployee(empNum) {
   }).join('');
   const taskRows = d.tasks.map(t => {
     const done = t.status==='completed'||t.status==='completed_with_comments';
+    /* Real tasks use taskDescription; demo fallback uses taskName/task */
+    const tName = t.taskDescription || t.taskName || t.task || 'Task';
+    /* Real tasks use assignedDate (string); createdAt is a Firestore timestamp */
+    const tDate = t.assignedDate || (t.createdAt && t.createdAt.seconds
+      ? new Date(t.createdAt.seconds*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
+      : (typeof t.createdAt === 'string' ? t.createdAt : ''));
+    const tDone = t.completedDate || (t.completedAt && t.completedAt.seconds
+      ? new Date(t.completedAt.seconds*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
+      : '');
+    const genBadge = t.isGeneral ? '<span style="font-size:9px;background:#cce5ff;color:#004085;padding:1px 5px;border-radius:4px;font-weight:700;margin-left:4px;">GENERAL</span>' : '';
     return `<div class="an-task-item">
       <div class="an-task-dot" style="background:${done?'#0F6E56':'#e6a817'}"></div>
-      <div style="flex:1"><div class="an-task-nm">${esc(t.taskName||t.task||'Task')}</div><div class="an-task-dt">Assigned: ${esc(t.createdAt||'2025')}</div></div>
+      <div style="flex:1">
+        <div class="an-task-nm">${esc(tName)}${genBadge}</div>
+        <div class="an-task-dt">${tDate ? 'Assigned: '+esc(tDate) : ''}${done && tDone ? (tDate?' · ':' ')+'Done: '+esc(tDone) : ''}</div>
+      </div>
       <div class="an-task-badge" style="background:${done?'#d1fae5':'#fef3c7'};color:${done?'#065f46':'#92400e'}">${done?'Done':'Pending'}</div>
     </div>`;
   }).join('');
@@ -4762,7 +4786,12 @@ function anPrint(empNum) {
   const city = (S.project?.city||'') + (S.project?.country ? ', '+S.project.country : '');
   const taskRows = d.tasks.map(t => {
     const done = t.status==='completed'||t.status==='completed_with_comments';
-    return `<tr><td>${esc(t.taskName||'Task')}</td><td style="text-align:center">${esc(t.createdAt||'N/A')}</td><td style="text-align:center;color:${done?'#065f46':'#92400e'};font-weight:700">${done?'Completed':'Pending'}</td></tr>`;
+    const tName = t.taskDescription || t.taskName || t.task || 'Task';
+    const tDate = t.assignedDate || (t.createdAt && t.createdAt.seconds
+      ? new Date(t.createdAt.seconds*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
+      : (typeof t.createdAt === 'string' ? t.createdAt : 'N/A'));
+    const genLabel = t.isGeneral ? ' [General]' : '';
+    return `<tr><td>${esc(tName)}${esc(genLabel)}</td><td style="text-align:center">${esc(tDate||'N/A')}</td><td style="text-align:center;color:${done?'#065f46':'#92400e'};font-weight:700">${done?'Completed':'Pending'}</td></tr>`;
   }).join('');
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Performance Report — ${esc(emp.name)}</title>
   <style>
