@@ -719,6 +719,38 @@
       box-shadow:0 8px 24px rgba(0,0,0,0.4);
     }
     #dtm-err-toast.show{opacity:1;}
+  
+    /* ── Enhanced Analytics: Score Wheels & Graphs ── */
+    .an-score-hero { display:flex;flex-direction:column;align-items:center;padding:18px 12px 10px;background:linear-gradient(160deg,#0f172a 60%,#1e3a5f);border-radius:0; }
+    .an-score-ring-wrap { position:relative;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px; }
+    .an-score-inner { position:absolute;text-align:center; }
+    .an-score-num { font-size:34px;font-weight:300;color:#fff;line-height:1; }
+    .an-score-sub { font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:.8px;margin-top:2px;text-transform:uppercase; }
+    .an-hero-grade { display:inline-flex;align-items:center;gap:8px;margin-top:6px; }
+    .an-hero-gbadge { font-size:20px;font-weight:300;padding:2px 14px;border-radius:20px;letter-spacing:1px; }
+    .an-hero-gtitle { font-size:12px;font-weight:400;color:rgba(255,255,255,0.8); }
+    .an-bk-section { padding:12px 12px 4px; }
+    .an-bk-title-hdr { font-size:10px;font-weight:600;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px; }
+    .an-bk-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px; }
+    .an-bk-card { background:#f8fafc;border-radius:12px;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid #f1f5f9; }
+    .an-bk-label { font-size:10px;color:#64748b;font-weight:500;margin-top:4px;line-height:1.3;padding:0 2px; }
+    .an-bk-pts { font-size:10px;font-weight:600;color:#0f172a;margin-top:1px; }
+    .an-bars-section { padding:4px 12px 8px; }
+    .an-bar-row2 { display:flex;align-items:center;gap:8px;margin-bottom:7px; }
+    .an-bar-lbl2 { font-size:11px;color:#64748b;width:80px;flex-shrink:0; }
+    .an-bar-bg2 { flex:1;height:9px;background:#f1f5f9;border-radius:5px;overflow:hidden; }
+    .an-bar-fill2 { height:9px;border-radius:5px; }
+    .an-bar-val2 { font-size:11px;color:#0f172a;font-weight:500;width:36px;text-align:right;flex-shrink:0; }
+    .an-init-banner { margin:0 12px 10px;padding:12px 14px;background:linear-gradient(120deg,#0F6E56,#185FA5);border-radius:12px;display:flex;align-items:center;gap:12px; }
+    .an-init-num { font-size:28px;font-weight:300;color:#fff;line-height:1;flex-shrink:0; }
+    .an-init-info { flex:1; }
+    .an-init-title { font-size:13px;font-weight:500;color:#fff; }
+    .an-init-sub { font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px; }
+    .an-quick-stats { display:flex;gap:0;margin:0 12px 10px;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0; }
+    .an-qs-box { flex:1;padding:10px 4px;text-align:center;background:#fff;border-right:1px solid #e2e8f0; }
+    .an-qs-box:last-child { border-right:none; }
+    .an-qs-n { font-size:18px;font-weight:300;line-height:1; }
+    .an-qs-l { font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-top:2px; }
   </style>
 </head>
 <body>
@@ -2373,7 +2405,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.2";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.3";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -4394,12 +4426,108 @@ function backToEmpList() {
 var AN = { selEmpNum: null, recChoice: '' };
 var AN_COLS = ['#0F6E56','#534AB7','#185FA5','#993C1D','#993556','#3B6D11','#854F0B','#185FA5'];
 
+/* ── Analytics performance helpers (v1.1.3) ── */
+function anParseDate(str) {
+  if (!str) return null;
+  var d = new Date(str + 'T00:00:00');
+  return isNaN(d.getTime()) ? null : d;
+}
+function anDaysDiff(d1str, d2str) {
+  var a = anParseDate(d1str), b = anParseDate(d2str);
+  if (!a || !b) return null;
+  return Math.round((b - a) / 86400000);
+}
+function anMiniRing(pct, color, size) {
+  size = size || 48;
+  var r = (size / 2) - 6;
+  var c = 2 * Math.PI * r;
+  var p = Math.max(0, Math.min(100, pct || 0));
+  var off = (c * (1 - p / 100)).toFixed(1);
+  var cx = size / 2;
+  var fs = size >= 64 ? 13 : 10;
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">'
+    + '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" stroke="#e2e8f0" stroke-width="5"/>'
+    + '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="5" stroke-linecap="round"'
+    + ' stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' + off + '" transform="rotate(-90 ' + cx + ' ' + cx + ')"/>'
+    + '<text x="' + cx + '" y="' + (cx + 1) + '" text-anchor="middle" dominant-baseline="middle" font-size="' + fs + '" font-weight="600" fill="#0f172a">' + Math.round(p) + '%</text>'
+    + '</svg>';
+}
+function calcPerfScore(tasks) {
+  var isDone = function(t) { return t.status === 'completed' || t.status === 'completed_with_comments'; };
+  var today = new Date().toISOString().split('T')[0];
+  var total = tasks.length;
+  if (total === 0) return { score:0, completionPct:0, onTimePct:0, speedScore:0, speedPct:0, initiativeCount:0, initiativeScore:0, initiativePct:0, overdueCount:0, overduePenalty:0, highPriScore:0, highPriPct:0, avgDays:null, completionScore:0, onTimeScore:0, completedCount:0, pendingCount:0, hpTotal:0, hpDone:0, total:0 };
+  var completed = tasks.filter(isDone);
+  var pending   = tasks.filter(function(t){ return t.status === 'pending' || t.status === 'returned'; });
+
+  // 1. Completion Rate → 0-25 pts
+  var completionPct   = Math.round(completed.length / total * 100);
+  var completionScore = Math.round(completionPct / 100 * 25);
+
+  // 2. On-Time Delivery → 0-25 pts
+  var completedWithDL = completed.filter(function(t){ return t.targetCompletionDate && t.completedDate; });
+  var onTimeArr       = completedWithDL.filter(function(t){ return t.completedDate <= t.targetCompletionDate; });
+  var onTimePct = completedWithDL.length > 0 ? Math.round(onTimeArr.length / completedWithDL.length * 100)
+                : (completed.length > 0 ? 80 : 0);
+  var onTimeScore = Math.round(onTimePct / 100 * 25);
+
+  // 3. Speed Score → 0-15 pts  (ratio of time taken vs time given)
+  var speedTasks = completed.filter(function(t){ return t.assignedDate && t.completedDate && t.targetCompletionDate; });
+  var speedScore = 8; // neutral default
+  var speedPct   = Math.round(speedScore / 15 * 100);
+  var avgDays    = null;
+  if (speedTasks.length > 0) {
+    var daysArr = speedTasks.map(function(t){
+      var d = anDaysDiff(t.assignedDate, t.completedDate);
+      return d !== null ? Math.max(0, d) : 1;
+    });
+    avgDays = Math.round(daysArr.reduce(function(a,b){ return a+b; }, 0) / daysArr.length);
+    var ratios = speedTasks.map(function(t){
+      var given = anDaysDiff(t.assignedDate, t.targetCompletionDate);
+      var taken = anDaysDiff(t.assignedDate, t.completedDate);
+      if (!given || given <= 0) return 1;
+      return Math.max(0, taken) / given;
+    });
+    var avgR = ratios.reduce(function(a,b){ return a+b; }, 0) / ratios.length;
+    speedScore = avgR <= 0.5 ? 15 : avgR <= 0.75 ? 12 : avgR <= 1.0 ? 9 : avgR <= 1.3 ? 5 : 2;
+    speedPct   = Math.round(speedScore / 15 * 100);
+  }
+
+  // 4. Initiative (General Tasks claimed & completed) → 0-20 pts
+  var genDone        = tasks.filter(function(t){ return t.isGeneral && isDone(t); });
+  var initiativeCount = genDone.length;
+  var initiativeScore = Math.min(initiativeCount * 5, 20);
+  var initiativePct   = Math.round(initiativeScore / 20 * 100);
+
+  // 5. Overdue Penalty → -0 to -10 pts
+  var overdueArr    = pending.filter(function(t){ return t.targetCompletionDate && t.targetCompletionDate < today; });
+  var overdueCount  = overdueArr.length;
+  var overduePenalty = Math.min(overdueCount * 3, 10);
+
+  // 6. High Priority Handling → 0-15 pts
+  var hpAll  = tasks.filter(function(t){ return t.isHighPriority; });
+  var hpDone = hpAll.filter(isDone);
+  var hpOT   = hpDone.filter(function(t){ return t.completedDate && t.targetCompletionDate && t.completedDate <= t.targetCompletionDate; });
+  var highPriScore = 10; // neutral if no HP tasks
+  var highPriPct   = Math.round(highPriScore / 15 * 100);
+  if (hpAll.length > 0) {
+    var part1 = (hpDone.length / hpAll.length) * 10;
+    var part2 = hpDone.length > 0 ? (hpOT.length / hpDone.length) * 5 : 0;
+    highPriScore = Math.round(part1 + part2);
+    highPriPct   = Math.round(highPriScore / 15 * 100);
+  }
+
+  var score = Math.max(0, Math.min(100, completionScore + onTimeScore + speedScore + initiativeScore - overduePenalty + highPriScore));
+  return { score:score, completionPct:completionPct, onTimePct:onTimePct, speedScore:speedScore, speedPct:speedPct, initiativeCount:initiativeCount, initiativeScore:initiativeScore, initiativePct:initiativePct, overdueCount:overdueCount, overduePenalty:overduePenalty, highPriScore:highPriScore, highPriPct:highPriPct, avgDays:avgDays, completionScore:completionScore, onTimeScore:onTimeScore, completedCount:completed.length, pendingCount:pending.length, hpTotal:hpAll.length, hpDone:hpDone.length, total:total };
+}
+
 function anGrade(eff) {
-  if (eff >= 90) return { letter:'A', title:'Outstanding Performance',   desc:'All tasks completed on time. Excellent commitment and execution.',    bg:'#E1F5EE', txt:'#085041', bar:'#0F6E56' };
-  if (eff >= 75) return { letter:'B', title:'Good Performance',          desc:'Above average. Meeting targets and expectations consistently.',       bg:'#E6F1FB', txt:'#0C447C', bar:'#185FA5' };
-  if (eff >= 60) return { letter:'C', title:'Needs Improvement',         desc:'Below target. Closer monitoring and coaching required.',              bg:'#FAEEDA', txt:'#633806', bar:'#854F0B' };
-  if (eff > 0)   return { letter:'D', title:'Unsatisfactory',            desc:'Very low completion rate. Immediate corrective action needed.',       bg:'#FCEBEB', txt:'#791F1F', bar:'#A32D2D' };
-  return               { letter:'D', title:'No Tasks Completed',         desc:'Zero completion. Immediate discussion and action plan required.',     bg:'#FCEBEB', txt:'#791F1F', bar:'#A32D2D' };
+  if (eff >= 90) return { letter:'A+', title:'Outstanding',       desc:'Exceptional results. Consistent on-time delivery and strong initiative.',   bg:'#E1F5EE', txt:'#085041', bar:'#0F6E56' };
+  if (eff >= 80) return { letter:'A',  title:'Excellent',         desc:'Above expectations. Reliable output with excellent team commitment.',        bg:'#dbeafe', txt:'#1e3a5f', bar:'#185FA5' };
+  if (eff >= 70) return { letter:'B',  title:'Good Performer',    desc:'Meets expectations. Minor improvements will make a strong difference.',      bg:'#ede9fe', txt:'#3b0764', bar:'#534AB7' };
+  if (eff >= 55) return { letter:'C',  title:'Needs Improvement', desc:'Below target. Coaching recommended to improve delivery quality.',             bg:'#FAEEDA', txt:'#633806', bar:'#854F0B' };
+  if (eff >= 30) return { letter:'D',  title:'Unsatisfactory',    desc:'Very low performance. Immediate corrective action required.',                 bg:'#FCEBEB', txt:'#791F1F', bar:'#A32D2D' };
+  return               { letter:'F',  title:'Critical',           desc:'Near-zero output. Immediate escalation and management review needed.',        bg:'#1f2937', txt:'#f87171', bar:'#ef4444' };
 }
 function anAvatarCol(name) {
   let s = 0; for (const c of (name||'E')) s += c.charCodeAt(0);
@@ -4418,29 +4546,35 @@ function pmGetProject() {
 }
 
 function anGetEmpData() {
+  function addPerf(d) {
+    var perf = calcPerfScore(d.tasks || []);
+    return Object.assign({}, d, { efficiency: perf.score, perf: perf });
+  }
   if (FB_OK && S.anData && S.anData.length) {
+    var filtered;
     if (isPM()) {
-      /* PM: show all employees on same project */
       const pmProj = pmGetProject();
-      if (pmProj) return S.anData.filter(d => (d.emp||d).projectName && (d.emp||d).projectName.toLowerCase().trim() === pmProj);
-      return S.anData;
+      if (pmProj) filtered = S.anData.filter(d => (d.emp||d).projectName && (d.emp||d).projectName.toLowerCase().trim() === pmProj);
+      else filtered = S.anData;
+    } else {
+      filtered = S.anData.filter(d => (d.emp||d).managerEmpNumber === S.user.employmentNumber);
     }
-    return S.anData.filter(d => (d.emp||d).managerEmpNumber === S.user.employmentNumber);
+    return filtered.map(addPerf);
   }
   var allSrc = (S.employees && S.employees.length) ? S.employees : AN_SAMPLE_EMPS;
   var src;
   if (isPM()) {
-    /* PM: filter by same project name */
     const pmProj = pmGetProject();
     src = pmProj ? allSrc.filter(function(e){ return e.projectName && e.projectName.toLowerCase().trim() === pmProj; }) : allSrc;
-    if (!src.length) src = allSrc; /* fallback: show all if no project match */
+    if (!src.length) src = allSrc;
   } else {
     src = allSrc;
   }
-  return src.map(emp => {
-    const total = emp._total || 0, done = emp._done || 0, pend = total - done;
-    const eff = total > 0 ? Math.round(done / total * 100) : 0;
-    return { emp, total, completed: done, pending: pend, overdue: Math.max(0, Math.floor(pend * 0.3)), efficiency: eff, tasks: anDemoTasks(emp, done, pend) };
+  return src.map(function(emp) {
+    var total = emp._total || 0, done = emp._done || 0, pend = total - done;
+    var eff = total > 0 ? Math.round(done / total * 100) : 0;
+    var fakePerfScore = { score:eff, completionPct:eff, onTimePct:0, speedScore:0, speedPct:0, initiativeCount:0, initiativeScore:0, initiativePct:0, overdueCount:0, overduePenalty:0, highPriScore:0, highPriPct:0, avgDays:null, completionScore:Math.round(eff/100*25), onTimeScore:0, completedCount:done, pendingCount:pend, hpTotal:0, hpDone:0, total:total };
+    return { emp:emp, total:total, completed:done, pending:pend, overdue:Math.max(0,Math.floor(pend*0.3)), efficiency:eff, tasks:anDemoTasks(emp,done,pend), perf:fakePerfScore };
   });
 }
 function anDemoTasks(emp, done, pend) {
@@ -4499,18 +4633,27 @@ async function anRenderTeamList(c) {
     : '';
   const cards = data.map(d => {
     const g = anGrade(d.efficiency); const col = anAvatarCol(d.emp.name); const init = (d.emp.name||'E').charAt(0).toUpperCase();
-    return `<div class="an-emp-card" onclick="anOpenEmployee('${esc(d.emp.employmentNumber)}')">
-      <div class="an-emp-avatar" style="background:${col}">${init}</div>
-      <div class="an-emp-mid">
+    const p = d.perf || {};
+    const ringHtml = anMiniRing(d.efficiency, g.bar, 46);
+    const onT  = (p.onTimePct  != null) ? p.onTimePct  + '% on-time'  : '—';
+    const init2 = (p.initiativeCount != null && p.initiativeCount > 0) ? p.initiativeCount + ' gen. task' + (p.initiativeCount > 1 ? 's' : '') : '—';
+    const ovd  = (p.overdueCount != null && p.overdueCount > 0) ? `<span style="color:#ef4444">${p.overdueCount} overdue</span>` : '<span style="color:#0F6E56">0 overdue</span>';
+    return `<div class="an-emp-card" onclick="anOpenEmployee('${esc(d.emp.employmentNumber)}')" style="align-items:flex-start;padding:12px 10px 10px">
+      <div class="an-emp-avatar" style="background:${col};flex-shrink:0;margin-top:2px">${init}</div>
+      <div class="an-emp-mid" style="flex:1;min-width:0">
         <div class="an-emp-name">${esc(d.emp.name)}</div>
-        <div class="an-emp-role">${esc(d.emp.designation)} · ${esc(d.emp.department)}</div>
-        <div class="an-prog-wrap"><div class="an-prog-fill" style="width:${d.efficiency}%;background:${g.bar}"></div></div>
+        <div class="an-emp-role" style="margin-bottom:6px">${esc(d.emp.designation)} · ${esc(d.emp.department)}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="font-size:10px;color:#64748b">&#9989; ${p.completedCount||0}/${p.total||d.total} done</div>
+          <div style="font-size:10px;color:#64748b">&#9200; ${onT}</div>
+          <div style="font-size:10px">${ovd}</div>
+        </div>
+        ${p.initiativeCount > 0 ? `<div style="margin-top:4px;font-size:10px;color:#0F6E56;font-weight:600">&#11088; ${p.initiativeCount} general task${p.initiativeCount>1?'s':''} claimed</div>` : ''}
       </div>
-      <div class="an-emp-right">
-        <div class="an-eff-pct">${d.efficiency}%</div>
-        <div class="an-grade-badge" style="background:${g.bg};color:${g.txt}">${g.letter}</div>
+      <div class="an-emp-right" style="align-items:center;flex-shrink:0">
+        <div style="position:relative">${ringHtml}</div>
+        <div class="an-grade-badge" style="background:${g.bg};color:${g.txt};margin-top:4px;font-size:12px">${g.letter}</div>
       </div>
-      <i class="ti ti-chevron-right" aria-hidden="true" style="color:#94a3b8;font-size:16px;margin-left:2px"></i>
     </div>`;
   }).join('');
   c.innerHTML = pmBanner + `
@@ -4606,48 +4749,103 @@ function anOpenEmployee(empNum) {
   const d = data.find(x => x.emp.employmentNumber === empNum);
   if (!d) return;
   AN.selEmpNum = empNum; AN.recChoice = '';
-  const emp = d.emp, g = anGrade(d.efficiency), col = anAvatarCol(emp.name), init = (emp.name||'E').charAt(0).toUpperCase();
+  const emp = d.emp, p = d.perf || {}, g = anGrade(d.efficiency);
+  const col = anAvatarCol(emp.name), init = (emp.name||'E').charAt(0).toUpperCase();
   const startD = new Date('2025-01-01'), todayD = new Date();
   const days = Math.floor((todayD - startD) / 86400000);
-  const proj = emp.projectName || S.project?.projectName || 'N/A';
-  const circ = 2 * Math.PI * 52, offset = (circ - circ * d.efficiency / 100).toFixed(1);
-  // Weekly bars (simulated from total/done)
-  const w = [ { l:'Feb', a: Math.ceil(d.total*0.3),  c: Math.min(d.completed, Math.ceil(d.completed*0.35)) },
-              { l:'Mar', a: Math.ceil(d.total*0.25), c: Math.min(d.completed, Math.ceil(d.completed*0.3)) },
-              { l:'Apr', a: Math.ceil(d.total*0.25), c: 0 }, { l:'May', a: Math.ceil(d.total*0.2), c: 0 } ];
-  const usedC = w[0].c + w[1].c; w[2].c = Math.max(0, Math.min(d.completed - usedC, w[2].a));
-  w[3].c = Math.max(0, d.completed - usedC - w[2].c);
-  const weekBars = w.map(x => { const pct = x.a > 0 ? Math.round(x.c/x.a*100) : 0;
-    return `<div class="an-bar-row"><div class="an-bar-lbl">${x.l}</div><div class="an-bar-bg"><div class="an-bar-fill" style="width:${pct}%;background:${g.bar}"></div></div><div class="an-bar-val">${x.c}/${x.a}</div></div>`;
-  }).join('');
+  const proj = emp.projectName || (S.project&&S.project.projectName) || 'N/A';
+  const city = ((S.project&&S.project.city)||'') + ((S.project&&S.project.country) ? ', '+(S.project.country) : '');
+
+  // ── Task rows ──
   const taskRows = d.tasks.map(t => {
     const done = t.status==='completed'||t.status==='completed_with_comments';
-    /* Real tasks use taskDescription; demo fallback uses taskName/task */
     const tName = t.taskDescription || t.taskName || t.task || 'Task';
-    /* Real tasks use assignedDate (string); createdAt is a Firestore timestamp */
     const tDate = t.assignedDate || (t.createdAt && t.createdAt.seconds
       ? new Date(t.createdAt.seconds*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
       : (typeof t.createdAt === 'string' ? t.createdAt : ''));
     const tDone = t.completedDate || (t.completedAt && t.completedAt.seconds
       ? new Date(t.completedAt.seconds*1000).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
       : '');
-    const genBadge = t.isGeneral ? '<span style="font-size:9px;background:#cce5ff;color:#004085;padding:1px 5px;border-radius:4px;font-weight:700;margin-left:4px;">GENERAL</span>' : '';
+    const tTarget = t.targetCompletionDate || '';
+    const isOT  = done && tDone && tTarget && tDone <= tTarget;
+    const isLate = done && tDone && tTarget && tDone > tTarget;
+    const isOvd = !done && tTarget && tTarget < new Date().toISOString().split('T')[0];
+    const genBadge = t.isGeneral ? '<span style="font-size:9px;background:#cce5ff;color:#004085;padding:1px 5px;border-radius:4px;margin-left:4px">General</span>' : '';
+    const hpBadge  = t.isHighPriority ? '<span style="font-size:9px;background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:4px;margin-left:4px">&#9679; HP</span>' : '';
+    const statusClr = done ? '#0F6E56' : isOvd ? '#ef4444' : '#e6a817';
+    const statusLbl = done ? (isLate ? 'Late' : 'Done') : (isOvd ? 'Overdue' : 'Pending');
+    const statusBg  = done ? (isLate ? '#fee2e2' : '#d1fae5') : (isOvd ? '#fee2e2' : '#fef3c7');
+    const statusTxt = done ? (isLate ? '#991b1b' : '#065f46') : (isOvd ? '#991b1b' : '#92400e');
     return `<div class="an-task-item">
-      <div class="an-task-dot" style="background:${done?'#0F6E56':'#e6a817'}"></div>
-      <div style="flex:1">
-        <div class="an-task-nm">${esc(tName)}${genBadge}</div>
-        <div class="an-task-dt">${tDate ? 'Assigned: '+esc(tDate) : ''}${done && tDone ? (tDate?' · ':' ')+'Done: '+esc(tDone) : ''}</div>
+      <div class="an-task-dot" style="background:${statusClr}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="an-task-nm">${esc(tName)}${genBadge}${hpBadge}</div>
+        <div class="an-task-dt">${tDate ? 'Assigned: '+esc(tDate) : ''}${tTarget ? ' · Due: '+esc(tTarget) : ''}${done && tDone ? ' · Done: '+esc(tDone) : ''}</div>
       </div>
-      <div class="an-task-badge" style="background:${done?'#d1fae5':'#fef3c7'};color:${done?'#065f46':'#92400e'}">${done?'Done':'Pending'}</div>
+      <div class="an-task-badge" style="background:${statusBg};color:${statusTxt}">${statusLbl}</div>
     </div>`;
   }).join('');
-  const city = (S.project?.city||'') + (S.project?.country ? ', '+S.project.country : '');
+
+  // ── Big hero ring SVG ──
+  const heroCirc = (2 * Math.PI * 52).toFixed(1);
+  const heroOff  = (parseFloat(heroCirc) * (1 - d.efficiency / 100)).toFixed(1);
+
+  // ── 6 breakdown mini rings ──
+  const factors = [
+    { label:'Completion',    sub:(p.completionScore||0)+'/25 pts', pct: Math.round((p.completionScore||0)/25*100), color:'#185FA5' },
+    { label:'On-Time',       sub:(p.onTimeScore||0)+'/25 pts',     pct: p.onTimePct||0,                            color:'#0F6E56' },
+    { label:'Speed',         sub:(p.speedScore||0)+'/15 pts',      pct: p.speedPct||0,                             color:'#0891b2' },
+    { label:'Initiative',    sub:(p.initiativeScore||0)+'/20 pts', pct: p.initiativePct||0,                        color:'#7c3aed' },
+    { label:'Priority',      sub:(p.highPriScore||0)+'/15 pts',    pct: p.highPriPct||0,                           color:'#d97706' },
+    { label:'Overdue Pen.',  sub:'−'+(p.overduePenalty||0)+' pts', pct: Math.max(0,100-Math.round((p.overduePenalty||0)/10*100)), color:'#ef4444' }
+  ];
+  const bkCards = factors.map(f => `<div class="an-bk-card">
+    ${anMiniRing(f.pct, f.color, 48)}
+    <div class="an-bk-label">${f.label}</div>
+    <div class="an-bk-pts">${f.sub}</div>
+  </div>`).join('');
+
+  // ── Horizontal bar chart ──
+  const barTotal   = p.total || d.total || 1;
+  const barDone    = p.completedCount != null ? p.completedCount : d.completed;
+  const barOnTime  = p.onTimePct != null ? Math.round(barDone * p.onTimePct / 100) : 0;
+  const barOverdue = p.overdueCount || d.overdue || 0;
+  const barPending = p.pendingCount != null ? p.pendingCount : d.pending;
+  function bar(val, max, color) {
+    var pct = max > 0 ? Math.min(100, Math.round(val / max * 100)) : 0;
+    return `<div class="an-bar-bg2"><div class="an-bar-fill2" style="width:${pct}%;background:${color}"></div></div>`;
+  }
+  const barRows = `
+    <div class="an-bar-row2"><div class="an-bar-lbl2">Completed</div>${bar(barDone, barTotal, '#0F6E56')}<div class="an-bar-val2">${barDone}/${barTotal}</div></div>
+    <div class="an-bar-row2"><div class="an-bar-lbl2">On-Time</div>${bar(barOnTime, barDone||1, '#185FA5')}<div class="an-bar-val2">${barOnTime}/${barDone}</div></div>
+    <div class="an-bar-row2"><div class="an-bar-lbl2">Pending</div>${bar(barPending, barTotal, '#e6a817')}<div class="an-bar-val2">${barPending}</div></div>
+    <div class="an-bar-row2"><div class="an-bar-lbl2">Overdue</div>${bar(barOverdue, barTotal, '#ef4444')}<div class="an-bar-val2">${barOverdue}</div></div>`;
+
+  // ── Initiative banner ──
+  const initCount = p.initiativeCount || 0;
+  const initBanner = initCount > 0 ? `<div class="an-init-banner">
+    <div class="an-init-num">${initCount}</div>
+    <div class="an-init-info">
+      <div class="an-init-title">&#11088; General Task${initCount>1?'s':''} Claimed</div>
+      <div class="an-init-sub">Initiative score: +${p.initiativeScore||0} pts. Shows team commitment.</div>
+    </div>
+  </div>` : '';
+
+  // ── Quick stats row ──
+  const avgDaysStr = (p.avgDays != null) ? p.avgDays + ' days' : 'N/A';
+  const quickStats = `<div class="an-quick-stats">
+    <div class="an-qs-box"><div class="an-qs-n" style="color:#0f172a">${barTotal}</div><div class="an-qs-l">Total</div></div>
+    <div class="an-qs-box"><div class="an-qs-n" style="color:#0F6E56">${barDone}</div><div class="an-qs-l">Done</div></div>
+    <div class="an-qs-box"><div class="an-qs-n" style="color:#e6a817">${barPending}</div><div class="an-qs-l">Pending</div></div>
+    <div class="an-qs-box"><div class="an-qs-n" style="color:#ef4444">${barOverdue}</div><div class="an-qs-l">Overdue</div></div>
+    <div class="an-qs-box"><div class="an-qs-n" style="color:#185FA5;font-size:14px">${avgDaysStr}</div><div class="an-qs-l">Avg/Task</div></div>
+  </div>`;
 
   document.getElementById('app').innerHTML = `
     <div class="tt-hdr">
       <div class="tt-hdr-row">
-        <button style="background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0;" onclick="anGoBackList()" title="Back"><i class="ti ti-arrow-left" aria-hidden="true"></i></button>
-        <div class="tt-info"><div class="tt-name">${esc(emp.name)}</div><div class="tt-sub">Performance Report · 01 Jan – 15 May 2025</div></div>
+        <button style="background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0" onclick="anGoBackList()"><i class="ti ti-arrow-left" aria-hidden="true"></i></button>
+        <div class="tt-info"><div class="tt-name">${esc(emp.name)}</div><div class="tt-sub">Performance Report</div></div>
         <button class="tt-home-top" onclick="renderApp()" title="Home"><i class="ti ti-home" aria-hidden="true"></i></button>
       </div>
     </div>
@@ -4664,6 +4862,47 @@ function anOpenEmployee(empNum) {
       </div>
       <div class="an-detail-body">
 
+        <!-- ── SCORE HERO ── -->
+        <div class="an-info-card" style="padding:0;overflow:hidden;margin-bottom:10px">
+          <div class="an-score-hero">
+            <div class="an-score-ring-wrap">
+              <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="Score ${d.efficiency}/100">
+                <circle cx="70" cy="70" r="52" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="11"/>
+                <circle cx="70" cy="70" r="52" fill="none" stroke="${g.bar}" stroke-width="11" stroke-linecap="round"
+                  stroke-dasharray="${heroCirc}" stroke-dashoffset="${heroOff}" transform="rotate(-90 70 70)"/>
+              </svg>
+              <div class="an-score-inner">
+                <div class="an-score-num">${d.efficiency}</div>
+                <div class="an-score-sub">/ 100 pts</div>
+              </div>
+            </div>
+            <div class="an-hero-grade">
+              <div class="an-hero-gbadge" style="background:${g.bg};color:${g.txt}">${g.letter}</div>
+              <div class="an-hero-gtitle">${g.title}</div>
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.55);text-align:center;margin-top:6px;padding:0 20px;line-height:1.5">${g.desc}</div>
+          </div>
+
+          <!-- 6 Breakdown Rings -->
+          <div class="an-bk-section">
+            <div class="an-bk-title-hdr">Score Breakdown</div>
+            <div class="an-bk-grid">${bkCards}</div>
+          </div>
+        </div>
+
+        <!-- ── TASK BAR CHART ── -->
+        <div class="an-info-card" style="margin-bottom:10px">
+          <div class="an-card-hdr"><i class="ti ti-chart-bar" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Task Distribution</div></div>
+          <div class="an-bars-section">${barRows}</div>
+        </div>
+
+        <!-- ── QUICK STATS ── -->
+        ${quickStats}
+
+        <!-- ── INITIATIVE BANNER ── -->
+        ${initBanner}
+
+        <!-- ── EMPLOYEE INFO ── -->
         <div class="an-info-card">
           <div class="an-card-hdr"><i class="ti ti-user" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Employee Information</div></div>
           <div class="an-info-row"><span class="an-info-lbl">Full Name</span><span class="an-info-val">${esc(emp.name)}</span></div>
@@ -4673,73 +4912,49 @@ function anOpenEmployee(empNum) {
           <div class="an-info-row"><span class="an-info-lbl">Joined Project</span><span class="an-info-val">01 Jan 2025</span></div>
         </div>
 
+        <!-- ── PROJECT DETAILS ── -->
         <div class="an-info-card">
           <div class="an-card-hdr"><i class="ti ti-building-skyscraper" aria-hidden="true" style="font-size:14px;color:#185FA5"></i><div class="an-card-hdr-title">Project Details</div></div>
           <div class="an-info-row"><span class="an-info-lbl">Project Name</span><span class="an-info-val">${esc(proj)}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Company</span><span class="an-info-val">${esc(S.project?.companyName||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Company</span><span class="an-info-val">${esc((S.project&&S.project.companyName)||'N/A')}</span></div>
           <div class="an-info-row"><span class="an-info-lbl">Location</span><span class="an-info-val">${esc(city)||'N/A'}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Start Date</span><span class="an-info-val">${esc(S.project?.startDate||'N/A')}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">End Date</span><span class="an-info-val">${esc(S.project?.endDate||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Start Date</span><span class="an-info-val">${esc((S.project&&S.project.startDate)||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">End Date</span><span class="an-info-val">${esc((S.project&&S.project.endDate)||'N/A')}</span></div>
         </div>
 
+        <!-- ── MANAGER DETAILS ── -->
         <div class="an-info-card">
           <div class="an-card-hdr"><i class="ti ti-user-shield" aria-hidden="true" style="font-size:14px;color:#534AB7"></i><div class="an-card-hdr-title">Manager Details</div></div>
-          <div class="an-info-row"><span class="an-info-lbl">Manager</span><span class="an-info-val">${esc(S.user?.name||'N/A')}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Designation</span><span class="an-info-val">${esc(S.user?.designation||'N/A')}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Emp Number</span><span class="an-info-val" style="color:#0F6E56">${esc(S.user?.employmentNumber||'N/A')}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Department</span><span class="an-info-val">${esc(S.user?.department||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Manager</span><span class="an-info-val">${esc((S.user&&S.user.name)||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Designation</span><span class="an-info-val">${esc((S.user&&S.user.designation)||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Emp Number</span><span class="an-info-val" style="color:#0F6E56">${esc((S.user&&S.user.employmentNumber)||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Department</span><span class="an-info-val">${esc((S.user&&S.user.department)||'N/A')}</span></div>
         </div>
 
+        <!-- ── DURATION ── -->
         <div class="an-info-card">
-          <div class="an-card-hdr"><i class="ti ti-calendar-stats" aria-hidden="true" style="font-size:14px;color:#854F0B"></i><div class="an-card-hdr-title">Assignment Duration</div></div>
+          <div class="an-card-hdr"><i class="ti ti-calendar-stats" aria-hidden="true" style="font-size:14px;color:#854F0B"></i><div class="an-card-hdr-title">Project Duration</div></div>
           <div class="an-dur-strip"><div class="an-dur-dot"></div><div class="an-dur-line"></div><div class="an-dur-dot-end"></div></div>
-          <div style="display:flex;justify-content:space-between;padding:0 12px 6px;font-size:10px;color:#64748b;font-weight:700"><span>01 Jan 2025</span><span>Today — 15 May 2025</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0 12px 6px;font-size:10px;color:#64748b;font-weight:700"><span>01 Jan 2025</span><span>Today</span></div>
           <div style="text-align:center;padding:0 12px 12px;font-size:14px;font-weight:700;color:#0F6E56">${days} days on project</div>
         </div>
 
+        <!-- ── TASK LIST ── -->
         <div class="an-info-card">
-          <div class="an-card-hdr"><i class="ti ti-chart-bar" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Performance Analytics</div></div>
-          <div class="an-stats-grid">
-            <div class="an-stat-box"><div class="an-stat-n" style="color:#0F6E56">${d.total}</div><div class="an-stat-l">Total Tasks</div></div>
-            <div class="an-stat-box"><div class="an-stat-n" style="color:#0F6E56">${d.completed}</div><div class="an-stat-l">Completed</div></div>
-            <div class="an-stat-box"><div class="an-stat-n" style="color:#e6a817">${d.pending}</div><div class="an-stat-l">Pending</div></div>
-            <div class="an-stat-box"><div class="an-stat-n" style="color:#A32D2D">${d.overdue}</div><div class="an-stat-l">Overdue</div></div>
-          </div>
-          <div style="display:flex;justify-content:center;padding:12px 12px 4px">
-            <svg width="130" height="130" viewBox="0 0 130 130" role="img" aria-label="Efficiency ${d.efficiency}%">
-              <circle cx="65" cy="65" r="52" fill="none" stroke="#e2e8f0" stroke-width="10"/>
-              <circle cx="65" cy="65" r="52" fill="none" stroke="${g.bar}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset}" transform="rotate(-90 65 65)"/>
-              <text x="65" y="58" text-anchor="middle" font-size="22" font-weight="700" fill="${g.txt}">${d.efficiency}%</text>
-              <text x="65" y="74" text-anchor="middle" font-size="10" fill="#94a3b8">Efficiency</text>
-              <text x="65" y="88" text-anchor="middle" font-size="9" fill="${g.bar}" font-weight="700">Grade ${g.letter}</text>
-            </svg>
-          </div>
-          <div style="padding:8px 12px 4px;font-size:11px;font-weight:700;color:#0f172a;border-top:0.5px solid #f1f5f9">Weekly task completion</div>
-          <div style="padding:6px 12px 12px">${weekBars}</div>
-          <div class="an-grade-row">
-            <div class="an-grade-circle" style="background:${g.bg};color:${g.txt}">${g.letter}</div>
-            <div style="flex:1">
-              <div style="font-size:13px;font-weight:700;color:#0f172a">${g.title}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px;line-height:1.4">${g.desc}</div>
-              <div style="background:#e2e8f0;border-radius:5px;height:6px;margin-top:7px;overflow:hidden"><div style="height:6px;border-radius:5px;background:${g.bar};width:${d.efficiency}%"></div></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="an-info-card">
-          <div class="an-card-hdr"><i class="ti ti-clipboard-list" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Task Breakdown — ${d.total} tasks</div></div>
+          <div class="an-card-hdr"><i class="ti ti-clipboard-list" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Task Breakdown (${d.tasks.length} tasks)</div></div>
           ${taskRows||'<div style="padding:12px;font-size:12px;color:#94a3b8;text-align:center">No tasks found</div>'}
         </div>
 
+        <!-- ── RECOMMENDATION ── -->
         <div class="an-info-card" style="padding-bottom:4px">
           <div class="an-card-hdr"><i class="ti ti-file-certificate" aria-hidden="true" style="font-size:14px;color:#0F6E56"></i><div class="an-card-hdr-title">Manager Recommendation</div></div>
           <div class="an-rec-grid">
-            <div class="an-rec-btn" style="background:#E1F5EE;color:#085041;border-color:#0F6E56"    onclick="anSelRec(this,'Promotion')">   <i class="ti ti-arrow-up" aria-hidden="true"></i> Promotion</div>
-            <div class="an-rec-btn" style="background:#E6F1FB;color:#0C447C;border-color:#185FA5"   onclick="anSelRec(this,'Bonus')">      <i class="ti ti-star" aria-hidden="true"></i> Bonus</div>
-            <div class="an-rec-btn" style="background:#FAEEDA;color:#633806;border-color:#854F0B"   onclick="anSelRec(this,'Warning')">    <i class="ti ti-alert-triangle" aria-hidden="true"></i> Warning</div>
-            <div class="an-rec-btn" style="background:#FCEBEB;color:#791F1F;border-color:#A32D2D"  onclick="anSelRec(this,'Termination')"><i class="ti ti-user-x" aria-hidden="true"></i> Termination</div>
+            <div class="an-rec-btn" style="background:#E1F5EE;color:#085041;border-color:#0F6E56"    onclick="anSelRec(this,'Promote')">&#11014; Promote</div>
+            <div class="an-rec-btn" style="background:#E6F1FB;color:#0C447C;border-color:#185FA5"   onclick="anSelRec(this,'Bonus')">&#127881; Bonus</div>
+            <div class="an-rec-btn" style="background:#FAEEDA;color:#633806;border-color:#854F0B"   onclick="anSelRec(this,'Warning')">&#9888; Warning</div>
+            <div class="an-rec-btn" style="background:#FCEBEB;color:#791F1F;border-color:#A32D2D"  onclick="anSelRec(this,'Terminate')">&#10060; Terminate</div>
           </div>
-          <textarea class="an-rec-note" id="an-rec-note" placeholder="Write your recommendation note here. This will appear on the printed A4 form and can be sent to HR..."></textarea>
+          <textarea class="an-rec-note" id="an-rec-note" placeholder="Write your recommendation note here. This will appear on the printed HR form."></textarea>
         </div>
 
         <button class="an-print-btn" onclick="anPrint('${esc(empNum)}')">
@@ -4772,7 +4987,7 @@ function anPrint(empNum) {
   const data = anGetEmpData();
   const d = data.find(x => x.emp.employmentNumber === empNum);
   if (!d) return;
-  const emp = d.emp, g = anGrade(d.efficiency);
+  const emp = d.emp, p = d.perf || {}, g = anGrade(d.efficiency);
   /* Read recommendation — from memory or localStorage */
   let rec = AN.recChoice || '';
   let note = (document.getElementById('an-rec-note')?.value || '').trim();
@@ -4826,18 +5041,32 @@ function anPrint(empNum) {
         <div class="inf"><span class="inf-l">Report Date</span><span class="inf-v">${today}</span></div>
       </div>
     </div>
-    <div class="sec"><div class="sec-title">Performance Summary</div>
+    <div class="sec"><div class="sec-title">Performance Summary — Score: ${d.efficiency}/100 · Grade: ${g.letter} ${g.title}</div>
       <div class="stat-row">
         <div class="stat-box"><div class="stat-n">${d.total}</div><div class="stat-l">Total Tasks</div></div>
         <div class="stat-box"><div class="stat-n">${d.completed}</div><div class="stat-l">Completed</div></div>
         <div class="stat-box"><div class="stat-n">${d.pending}</div><div class="stat-l">Pending</div></div>
-        <div class="stat-box"><div class="stat-n">${d.efficiency}%</div><div class="stat-l">Efficiency</div></div>
+        <div class="stat-box"><div class="stat-n">${p.overdueCount||d.overdue||0}</div><div class="stat-l">Overdue</div></div>
+        <div class="stat-box"><div class="stat-n">${p.initiativeCount||0}</div><div class="stat-l">General Tasks</div></div>
+        <div class="stat-box"><div class="stat-n">${p.avgDays!=null?p.avgDays+' d':'N/A'}</div><div class="stat-l">Avg/Task</div></div>
       </div>
+      <table style="margin:8px 0;font-size:11px">
+        <thead><tr><th>Factor</th><th>Score</th><th>Max</th><th>%</th></tr></thead>
+        <tbody>
+          <tr><td>Completion Rate</td><td>${p.completionScore||0}</td><td>25</td><td>${p.completionPct||0}%</td></tr>
+          <tr><td>On-Time Delivery</td><td>${p.onTimeScore||0}</td><td>25</td><td>${p.onTimePct||0}%</td></tr>
+          <tr><td>Speed Score</td><td>${p.speedScore||0}</td><td>15</td><td>${p.speedPct||0}%</td></tr>
+          <tr><td>Initiative (General Tasks)</td><td>${p.initiativeScore||0}</td><td>20</td><td>${p.initiativePct||0}%</td></tr>
+          <tr><td>High Priority Handling</td><td>${p.highPriScore||0}</td><td>15</td><td>${p.highPriPct||0}%</td></tr>
+          <tr style="color:#991b1b"><td>Overdue Penalty</td><td>−${p.overduePenalty||0}</td><td>−10</td><td>—</td></tr>
+          <tr style="font-weight:800;background:#f8fafc"><td>TOTAL SCORE</td><td>${d.efficiency}</td><td>100</td><td>${d.efficiency}%</td></tr>
+        </tbody>
+      </table>
       <div class="grade-row">
         <div class="grade-circ">${g.letter}</div>
         <div style="flex:1"><div style="font-size:14px;font-weight:800;color:${g.txt}">${g.title}</div>
           <div style="font-size:11px;color:#64748b;margin-top:2px">${g.desc}</div>
-          <div class="eff-bar"><div class="eff-fill"></div></div>
+          <div class="eff-bar"><div class="eff-fill" style="width:${d.efficiency}%"></div></div>
         </div>
       </div>
     </div>
