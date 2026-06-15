@@ -752,76 +752,14 @@
     .an-qs-n { font-size:18px;font-weight:300;line-height:1; }
     .an-qs-l { font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-top:2px; }
 
-  /* ── DTM SYNC OVERLAY — full-screen cover shown while Firebase refreshes ── */
-  #dtm-sync-bar {
-    position: fixed;
-    inset: 0;
-    background: #0f172a;
-    z-index: 99999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    pointer-events: all;
-    /* Pure CSS auto-hide: visible for 3s then fades out automatically — NO JS needed */
-    animation: dsbAutoHide 3.5s ease forwards;
-  }
-  @keyframes dsbAutoHide {
-    0%   { opacity: 1; pointer-events: all; }
-    75%  { opacity: 1; pointer-events: all; }
-    100% { opacity: 0; pointer-events: none; }
-  }
-  #dtm-sync-bar.dtm-sync-done {
-    animation: none;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-  }
-  #dtm-sync-bar .dsb-logo {
-    font-size: 28px;
-    font-weight: 300;
-    color: #fff;
-    letter-spacing: 6px;
-    font-family: Arial, sans-serif;
-  }
-  #dtm-sync-bar .dsb-tag {
-    font-size: 10px;
-    color: rgba(255,255,255,0.4);
-    letter-spacing: 3px;
-    font-family: monospace;
-  }
-  #dtm-sync-bar .dsb-dots {
-    display: flex;
-    gap: 8px;
-  }
-  #dtm-sync-bar .dsb-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #0F6E56;
-    animation: dsbPulse 1.2s ease-in-out infinite;
-  }
-  #dtm-sync-bar .dsb-dot:nth-child(2) { animation-delay: 0.2s; background: #185FA5; }
-  #dtm-sync-bar .dsb-dot:nth-child(3) { animation-delay: 0.4s; background: #534AB7; }
-  @keyframes dsbPulse {
-    0%, 100% { transform: scale(0.7); opacity: 0.4; }
-    50%       { transform: scale(1.2); opacity: 1; }
-  }
+  /* sync overlay removed */
   </style>
 </head>
 <body>
 
 <div id="dtm-offline-banner">&#9888; No internet connection — working offline. Data will sync when reconnected.</div>
 <div id="dtm-err-toast"></div>
-<div id="dtm-sync-bar">
-  <div class="dsb-logo">DTM</div>
-  <div class="dsb-dots">
-    <div class="dsb-dot"></div>
-    <div class="dsb-dot"></div>
-    <div class="dsb-dot"></div>
-  </div>
-  <div class="dsb-tag">SYNCING DATA</div>
-</div>
+
 <div id="app"></div>
 
 <!-- Firebase loaded dynamically in boot() — never blocks page rendering -->
@@ -1697,15 +1635,15 @@ async function loadFirebaseAndInit() {
     await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
     await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
     initFirebase();
-  } catch(e) { hideSyncBar(); return; } /* Firebase unavailable — hide overlay */
+  } catch(e) { return; } /* Firebase unavailable — hide overlay */
 
-  if (!FB_OK || !auth) { hideSyncBar(); return; }
+  if (!FB_OK || !auth) { return; }
 
   let authDone = false;
-  const authTimeout = setTimeout(function() { authDone = true; hideSyncBar(); }, 8000);
+  const authTimeout = setTimeout(function() { authDone = true;
 
   auth.onAuthStateChanged(function(user) {
-    if (authDone) { hideSyncBar(); return; }
+    if (authDone) { return; }
     authDone = true;
     clearTimeout(authTimeout);
 
@@ -1741,31 +1679,21 @@ async function loadFirebaseAndInit() {
             if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
             setupNotificationListener();
             renderApp();
-            hideSyncBar(); /* Firebase confirmed — dismiss sync bar */
           } else {
             clearAllLocalData();
-            hideSyncBar();
             renderProfileSetup();
           }
         })
-        .catch(function() { hideSyncBar(); /* Firestore offline — show cached screen */ });
+        .catch(function() {
     } else {
       clearAllLocalData();
-      hideSyncBar();
       const appEl = document.getElementById("app");
       if (appEl && !appEl.querySelector(".login-wrap")) renderLoginScreen();
     }
   });
 }
 
-/* ── DTM SYNC BAR helpers ── */
-function showSyncBar() { /* no-op — overlay starts visible by default */ }
-function hideSyncBar() {
-  var b = document.getElementById('dtm-sync-bar');
-  if (!b) return;
-  b.className = 'dtm-sync-done';
-  setTimeout(function() { b.className = ''; b.style.width = ''; }, 600);
-}
+/* sync bar helpers removed */
 
 function boot() {
   phClean();
@@ -1780,15 +1708,13 @@ function boot() {
       S.user    = JSON.parse(savedUser);
       S.project = JSON.parse(savedProject);
       renderApp();
-      showSyncBar(); /* show thin sync bar while Firebase confirms data */
-    } catch(e) { hideSyncBar(); renderLoginScreen(); }
+      
+    } catch(e) { renderLoginScreen(); }
   } else {
-    hideSyncBar(); /* not logged in — show login screen, no sync needed */
     renderLoginScreen();
   }
 
   /* ── BACKGROUND: Firebase loads async, never blocks the UI ── */
-  setTimeout(hideSyncBar, 4000); /* SAFETY NET: always hide overlay within 4s no matter what */
   loadFirebaseAndInit();
 }
 
@@ -2485,7 +2411,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.2.0";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.2.1";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
