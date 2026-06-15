@@ -751,12 +751,43 @@
     .an-qs-box:last-child { border-right:none; }
     .an-qs-n { font-size:18px;font-weight:300;line-height:1; }
     .an-qs-l { font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin-top:2px; }
+
+  /* ── DTM SYNC BAR — thin top progress bar shown while Firebase refreshes ── */
+  #dtm-sync-bar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 3px;
+    background: linear-gradient(90deg, #0F6E56, #185FA5, #0F6E56);
+    background-size: 200% 100%;
+    z-index: 99999;
+    border-radius: 0 2px 2px 0;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    animation: dtmSyncMove 1.4s linear infinite;
+    pointer-events: none;
+  }
+  #dtm-sync-bar.dtm-sync-active {
+    opacity: 1;
+    width: 85%;
+    transition: width 0.6s ease, opacity 0.2s ease;
+  }
+  #dtm-sync-bar.dtm-sync-done {
+    width: 100% !important;
+    opacity: 0;
+    transition: width 0.25s ease, opacity 0.35s ease 0.2s;
+  }
+  @keyframes dtmSyncMove {
+    0%   { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+  }
   </style>
 </head>
 <body>
 
 <div id="dtm-offline-banner">&#9888; No internet connection — working offline. Data will sync when reconnected.</div>
 <div id="dtm-err-toast"></div>
+<div id="dtm-sync-bar"></div>
 <div id="app"></div>
 
 <!-- Firebase loaded dynamically in boot() — never blocks page rendering -->
@@ -1676,6 +1707,7 @@ async function loadFirebaseAndInit() {
             if (S.project) localStorage.setItem("dtm_project_v1", JSON.stringify(S.project));
             setupNotificationListener();
             renderApp();
+            hideSyncBar(); /* Firebase confirmed — dismiss sync bar */
           } else {
             clearAllLocalData();
             renderProfileSetup();
@@ -1688,6 +1720,21 @@ async function loadFirebaseAndInit() {
       if (appEl && !appEl.querySelector(".login-wrap")) renderLoginScreen();
     }
   });
+}
+
+/* ── DTM SYNC BAR helpers ── */
+function showSyncBar() {
+  var b = document.getElementById('dtm-sync-bar');
+  if (!b) return;
+  b.className = '';
+  void b.offsetWidth; /* force reflow */
+  b.className = 'dtm-sync-active';
+}
+function hideSyncBar() {
+  var b = document.getElementById('dtm-sync-bar');
+  if (!b) return;
+  b.className = 'dtm-sync-done';
+  setTimeout(function() { b.className = ''; b.style.width = ''; }, 600);
 }
 
 function boot() {
@@ -1703,6 +1750,7 @@ function boot() {
       S.user    = JSON.parse(savedUser);
       S.project = JSON.parse(savedProject);
       renderApp();
+      showSyncBar(); /* show thin sync bar while Firebase confirms data */
     } catch(e) { renderLoginScreen(); }
   } else {
     renderLoginScreen();
@@ -2405,7 +2453,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.3";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.4";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
