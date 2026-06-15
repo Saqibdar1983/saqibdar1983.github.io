@@ -763,14 +763,20 @@
     align-items: center;
     justify-content: center;
     gap: 18px;
-    opacity: 1;
     pointer-events: all;
-    transition: opacity 0.35s ease;
+    /* Pure CSS auto-hide: visible for 3s then fades out automatically — NO JS needed */
+    animation: dsbAutoHide 3.5s ease forwards;
+  }
+  @keyframes dsbAutoHide {
+    0%   { opacity: 1; pointer-events: all; }
+    75%  { opacity: 1; pointer-events: all; }
+    100% { opacity: 0; pointer-events: none; }
   }
   #dtm-sync-bar.dtm-sync-done {
+    animation: none;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.3s ease;
   }
   #dtm-sync-bar .dsb-logo {
     font-size: 28px;
@@ -2479,7 +2485,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.9";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.2.0";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
