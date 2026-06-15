@@ -2478,7 +2478,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.7";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.8";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -5009,8 +5009,8 @@ function anOpenEmployee(empNum) {
           <div class="an-info-row"><span class="an-info-lbl">Project Name</span><span class="an-info-val">${esc(proj)}</span></div>
           <div class="an-info-row"><span class="an-info-lbl">Company</span><span class="an-info-val">${esc((S.project&&S.project.companyName)||'N/A')}</span></div>
           <div class="an-info-row"><span class="an-info-lbl">Location</span><span class="an-info-val">${esc(city)||'N/A'}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Start Date</span><span class="an-info-val">${esc((S.project&&S.project.startDate)||'N/A')}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">End Date</span><span class="an-info-val">${esc((S.project&&S.project.endDate)||'N/A')}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Start Date</span><span class="an-info-val">${joinedStr}</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">End Date</span><span class="an-info-val">${todayStr}</span></div>
         </div>
 
         <!-- ── MANAGER DETAILS ── -->
