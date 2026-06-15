@@ -1691,15 +1691,15 @@ async function loadFirebaseAndInit() {
     await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
     await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
     initFirebase();
-  } catch(e) { return; } /* Firebase unavailable — stay on whatever screen is showing */
+  } catch(e) { hideSyncBar(); return; } /* Firebase unavailable — hide overlay */
 
-  if (!FB_OK || !auth) return;
+  if (!FB_OK || !auth) { hideSyncBar(); return; }
 
   let authDone = false;
-  const authTimeout = setTimeout(function() { authDone = true; }, 8000);
+  const authTimeout = setTimeout(function() { authDone = true; hideSyncBar(); }, 8000);
 
   auth.onAuthStateChanged(function(user) {
-    if (authDone) return;
+    if (authDone) { hideSyncBar(); return; }
     authDone = true;
     clearTimeout(authTimeout);
 
@@ -1742,7 +1742,7 @@ async function loadFirebaseAndInit() {
             renderProfileSetup();
           }
         })
-        .catch(function() { /* Firestore offline — stay on current screen */ });
+        .catch(function() { hideSyncBar(); /* Firestore offline — show cached screen */ });
     } else {
       clearAllLocalData();
       hideSyncBar();
@@ -1782,6 +1782,7 @@ function boot() {
   }
 
   /* ── BACKGROUND: Firebase loads async, never blocks the UI ── */
+  setTimeout(hideSyncBar, 4000); /* SAFETY NET: always hide overlay within 4s no matter what */
   loadFirebaseAndInit();
 }
 
@@ -2478,7 +2479,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.8";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.9";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
