@@ -763,13 +763,9 @@
     align-items: center;
     justify-content: center;
     gap: 18px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.18s ease;
-  }
-  #dtm-sync-bar.dtm-sync-active {
     opacity: 1;
     pointer-events: all;
+    transition: opacity 0.35s ease;
   }
   #dtm-sync-bar.dtm-sync-done {
     opacity: 0;
@@ -1742,12 +1738,14 @@ async function loadFirebaseAndInit() {
             hideSyncBar(); /* Firebase confirmed — dismiss sync bar */
           } else {
             clearAllLocalData();
+            hideSyncBar();
             renderProfileSetup();
           }
         })
         .catch(function() { /* Firestore offline — stay on current screen */ });
     } else {
       clearAllLocalData();
+      hideSyncBar();
       const appEl = document.getElementById("app");
       if (appEl && !appEl.querySelector(".login-wrap")) renderLoginScreen();
     }
@@ -1755,11 +1753,7 @@ async function loadFirebaseAndInit() {
 }
 
 /* ── DTM SYNC BAR helpers ── */
-function showSyncBar() {
-  var b = document.getElementById('dtm-sync-bar');
-  if (!b) return;
-  b.className = 'dtm-sync-active';
-}
+function showSyncBar() { /* no-op — overlay starts visible by default */ }
 function hideSyncBar() {
   var b = document.getElementById('dtm-sync-bar');
   if (!b) return;
@@ -1781,8 +1775,9 @@ function boot() {
       S.project = JSON.parse(savedProject);
       renderApp();
       showSyncBar(); /* show thin sync bar while Firebase confirms data */
-    } catch(e) { renderLoginScreen(); }
+    } catch(e) { hideSyncBar(); renderLoginScreen(); }
   } else {
+    hideSyncBar(); /* not logged in — show login screen, no sync needed */
     renderLoginScreen();
   }
 
@@ -2483,7 +2478,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.6";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.7";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
