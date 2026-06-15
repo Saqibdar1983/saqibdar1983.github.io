@@ -2483,7 +2483,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.1.5";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.1.6";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -4829,8 +4829,26 @@ function anOpenEmployee(empNum) {
   AN.selEmpNum = empNum; AN.recChoice = '';
   const emp = d.emp, p = d.perf || {}, g = anGrade(d.efficiency);
   const col = anAvatarCol(emp.name), init = (emp.name||'E').charAt(0).toUpperCase();
-  const startD = new Date('2025-01-01'), todayD = new Date();
-  const days = Math.floor((todayD - startD) / 86400000);
+  const todayD = new Date();
+  /* Use employee's profile creation date as the real joined date */
+  var startD;
+  if (emp.createdAt && emp.createdAt.seconds) {
+    startD = new Date(emp.createdAt.seconds * 1000);        /* Firestore Timestamp */
+  } else if (emp.createdAt && typeof emp.createdAt === 'string') {
+    startD = new Date(emp.createdAt);                        /* string date */
+  } else {
+    /* Fallback: earliest task assigned date */
+    var earliest = null;
+    (d.tasks || []).forEach(function(t) {
+      var td = t.assignedDate ? new Date(t.assignedDate) :
+               (t.createdAt && t.createdAt.seconds ? new Date(t.createdAt.seconds*1000) : null);
+      if (td && (!earliest || td < earliest)) earliest = td;
+    });
+    startD = earliest || new Date();
+  }
+  const days = Math.max(0, Math.floor((todayD - startD) / 86400000));
+  const joinedStr = startD.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+  const todayStr  = todayD.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
   const proj = emp.projectName || (S.project&&S.project.projectName) || 'N/A';
   const city = ((S.project&&S.project.city)||'') + ((S.project&&S.project.country) ? ', '+(S.project.country) : '');
 
@@ -4987,7 +5005,7 @@ function anOpenEmployee(empNum) {
           <div class="an-info-row"><span class="an-info-lbl">Designation</span><span class="an-info-val">${esc(emp.designation)}</span></div>
           <div class="an-info-row"><span class="an-info-lbl">Department</span><span class="an-info-val">${esc(emp.department)}</span></div>
           <div class="an-info-row"><span class="an-info-lbl">Emp Number</span><span class="an-info-val" style="color:#0F6E56">${esc(emp.employmentNumber)}</span></div>
-          <div class="an-info-row"><span class="an-info-lbl">Joined Project</span><span class="an-info-val">01 Jan 2025</span></div>
+          <div class="an-info-row"><span class="an-info-lbl">Joined Project</span><span class="an-info-val">${joinedStr}</span></div>
         </div>
 
         <!-- ── PROJECT DETAILS ── -->
@@ -5013,7 +5031,7 @@ function anOpenEmployee(empNum) {
         <div class="an-info-card">
           <div class="an-card-hdr"><i class="ti ti-calendar-stats" aria-hidden="true" style="font-size:14px;color:#854F0B"></i><div class="an-card-hdr-title">Project Duration</div></div>
           <div class="an-dur-strip"><div class="an-dur-dot"></div><div class="an-dur-line"></div><div class="an-dur-dot-end"></div></div>
-          <div style="display:flex;justify-content:space-between;padding:0 12px 6px;font-size:10px;color:#64748b;font-weight:700"><span>01 Jan 2025</span><span>Today</span></div>
+          <div style="display:flex;justify-content:space-between;padding:0 12px 6px;font-size:10px;color:#64748b;font-weight:700"><span>${joinedStr}</span><span>${todayStr}</span></div>
           <div style="text-align:center;padding:0 12px 12px;font-size:14px;font-weight:700;color:#0F6E56">${days} days on project</div>
         </div>
 
