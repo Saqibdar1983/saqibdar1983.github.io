@@ -2411,7 +2411,7 @@ function updateEmpStats() {
    HOME SCREEN — Design 2 (3 section cards)
    ════════════════════════════════════════════════════ */
 function renderApp() {
-  const APP_VER = "v1.2.2";  /* bump this on every push — used to confirm new code loaded */
+  const APP_VER = "v1.2.3";  /* bump this on every push — used to confirm new code loaded */
   const today = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const firstName   = esc((S.user.name || "").split(" ")[0]);
   const projectName = esc(S.user.projectName || (S.project && S.project.projectName) || "");
@@ -5112,6 +5112,13 @@ function anPrint(empNum) {
   </div></body></html>`;
   const w = window.open('', '_blank', 'width=860,height=1100');
   if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(function(){ w.print(); }, 600); }
+}
+
+/* Register service worker v13 — network-first, keeps app always fresh */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
+  });
 }
 
 document.addEventListener('DOMContentLoaded', boot);
